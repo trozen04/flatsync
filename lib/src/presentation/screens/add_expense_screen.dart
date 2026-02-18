@@ -9,6 +9,8 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_container.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../services/expense_service.dart';
@@ -293,54 +295,103 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           style: AppTextStyles.titleMedium(context),
                         ),
                         AppDimensions.h10(context),
-                        ..._contacts.map(
-                          (contact) => Container(
-                            margin: EdgeInsets.only(bottom: AppDimensions.height(context) * 0.01),
-                            decoration: BoxDecoration(
-                              color: _selectedParticipants.contains(contact.phoneNumber)
-                                  ? Theme.of(context).colorScheme.primary.withOpacity(0.08)
-                                  : Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: _selectedParticipants.contains(contact.phoneNumber)
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5),
-                                width: 1.2,
+                        ..._contacts.map((contact) {
+                          final phone = contact.phoneNumber;
+                          final selected = phone != null && _selectedParticipants.contains(phone);
+                          return AppContainer(
+                            margin: EdgeInsets.only(bottom: AppDimensions.height(context) * 0.012),
+                            radius: 16,
+                            border: Border.all(
+                              color: selected
+                                  ? Theme.of(context).colorScheme.primary.withOpacity(0.28)
+                                  : Colors.transparent,
+                            ),
+                            shadows: [
+                              BoxShadow(
+                                color: selected
+                                    ? Theme.of(context).colorScheme.primary.withOpacity(0.16)
+                                    : Colors.black.withOpacity(0.05),
+                                blurRadius: selected ? 16 : 12,
+                                offset: const Offset(0, 5),
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
+                            ],
+                            color: selected
+                                ? Theme.of(context).colorScheme.primary.withOpacity(0.09)
+                                : Theme.of(context).colorScheme.surface,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: phone == null
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        if (selected) {
+                                          _selectedParticipants.remove(phone);
+                                        } else {
+                                          _selectedParticipants.add(phone);
+                                        }
+                                      });
+                                    },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.14),
+                                      child: Text(
+                                        (contact.name?.isNotEmpty ?? false)
+                                            ? contact.name![0].toUpperCase()
+                                            : '?',
+                                        style: AppTextStyles.labelLarge(context).copyWith(
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            contact.name ?? 'Unknown',
+                                            style: AppTextStyles.labelLarge(context),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            contact.phoneNumber ?? '',
+                                            style: AppTextStyles.bodySmall(context),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    AnimatedContainer(
+                                      duration: const Duration(milliseconds: 180),
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? Theme.of(context).colorScheme.primary
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(7),
+                                        border: Border.all(
+                                          color: selected
+                                              ? Theme.of(context).colorScheme.primary
+                                              : Theme.of(context).colorScheme.outlineVariant,
+                                          width: 1.6,
+                                        ),
+                                      ),
+                                      child: selected
+                                          ? const Icon(Icons.check, size: 16, color: Colors.white)
+                                          : null,
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            child: CheckboxListTile(
-                              contentPadding: AppDimensions.fieldPadding(context),
-                              title: Text(
-                                contact.name ?? 'Unknown',
-                                style: AppTextStyles.labelLarge(context),
                               ),
-                              subtitle: Text(
-                                contact.phoneNumber ?? '',
-                                style: AppTextStyles.bodySmall(context),
-                              ),
-                              value: _selectedParticipants.contains(contact.phoneNumber),
-                              onChanged: (checked) {
-                                if (contact.phoneNumber == null) return;
-                                setState(() {
-                                  if (checked == true) {
-                                    if (!_selectedParticipants.contains(contact.phoneNumber)) {
-                                      _selectedParticipants.add(contact.phoneNumber!);
-                                    }
-                                  } else {
-                                    _selectedParticipants.remove(contact.phoneNumber);
-                                  }
-                                });
-                              },
                             ),
-                          ),
-                        ),
+                          );
+                        }),
                         AppDimensions.h50(context),
                       ],
                     ),
@@ -353,20 +404,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         floatingActionButton: Container(
           width: double.infinity,
           padding: EdgeInsets.symmetric(horizontal: AppDimensions.width(context) * 0.04),
-          child: ElevatedButton(
-            onPressed: _submitting ? null : _addExpense,
-            style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.symmetric(vertical: AppDimensions.height(context) * 0.02),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 4,
-            ),
-            child: _submitting
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : Text('Add Expense', style: AppTextStyles.titleMedium(context).copyWith(color: Colors.white)),
+          child: AppButton(
+            text: 'Add Expense',
+            onPressed: _addExpense,
+            isLoading: _submitting,
+            fullWidth: true,
+            size: AppButtonSize.large,
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -374,4 +417,3 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 }
-

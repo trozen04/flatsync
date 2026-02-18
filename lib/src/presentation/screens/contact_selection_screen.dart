@@ -206,21 +206,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
         }
       }
 
-      await isar.isar.writeTxn(() async {
-        for (var contact in allContacts) {
-          // Check if contact exists by phone
-          final existing = await isar.isar.contactModels
-              .filter()
-              .phoneNumberEqualTo(contact.phoneNumber)
-              .findFirst();
-          
-          if (existing != null) {
-            // Update existing contact
-            contact.id = existing.id;
-          }
-        }
-        await isar.isar.contactModels.putAll(allContacts);
-      });
+      await contactService.upsertContactsByCanonical(isar, allContacts);
 
       developer.log('✅ Saved ${allContacts.length} contacts');
       developer.log('📊 Registered: ${allContacts.where((c) => c.isRegistered).length}');

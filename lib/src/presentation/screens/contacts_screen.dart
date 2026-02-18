@@ -9,7 +9,6 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
-import '../../core/theme/app_shadows.dart';
 import '../../core/widgets/app_container.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
@@ -36,6 +35,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
   StreamSubscription<int>? _updatesSub;
   StreamSubscription<int>? _contactUpdatesSub;
   static const double _currencyDivisor = 100.0;
+  bool _isReconciling = false;
+  DateTime? _lastReconcileAt;
 
   @override
   void initState() {
@@ -91,40 +92,50 @@ class _ContactsScreenState extends State<ContactsScreen> {
       setState(() => _contacts = contacts);
 
       // Non-blocking background reconciliation for contact IDs.
-      unawaited(_reconcileContactIds(contacts));
+      final shouldReconcile = !_isReconciling &&
+          (context.read<ContactService>().canAttemptLookup) &&
+          (_lastReconcileAt == null ||
+              DateTime.now().difference(_lastReconcileAt!) > const Duration(seconds: 30));
+      if (shouldReconcile) {
+        _lastReconcileAt = DateTime.now();
+        unawaited(_reconcileContactIds(contacts));
+      }
     } catch (e) {
       developer.log('Load local contacts error: $e');
     }
   }
 
   Future<void> _reconcileContactIds(List<ContactModel> contacts) async {
-    final unresolved = contacts
-        .where((c) => (c.contactId == null || c.contactId!.isEmpty) && (c.phoneNumber?.isNotEmpty ?? false))
-        .toList();
+    _isReconciling = true;
+    try {
+      final unresolved = contacts
+          .where((c) => (c.contactId == null || c.contactId!.isEmpty) && (c.phoneNumber?.isNotEmpty ?? false))
+          .toList();
 
-    if (unresolved.isEmpty) return;
+      if (unresolved.isEmpty) return;
 
-    final contactService = context.read<ContactService>();
-    final isar = context.read<IsarService>();
-    final updated = <ContactModel>[];
+      final contactService = context.read<ContactService>();
+      final isar = context.read<IsarService>();
+      final updated = <ContactModel>[];
 
-    for (final contact in unresolved) {
-      final resolved = await contactService.addContactByPhone(contact.phoneNumber!);
-      if (resolved != null) {
-        contact.contactId = resolved.contactId;
-        contact.isRegistered = true;
-        contact.name = contact.name?.isNotEmpty == true ? contact.name : resolved.name;
-        contact.avatar = resolved.avatar;
-        contact.updatedAt = DateTime.now();
-        updated.add(contact);
+      for (final contact in unresolved) {
+        final resolved = await contactService.addContactByPhone(contact.phoneNumber!);
+        if (resolved != null) {
+          contact.contactId = resolved.contactId;
+          contact.isRegistered = true;
+          contact.name = contact.name?.isNotEmpty == true ? contact.name : resolved.name;
+          contact.avatar = resolved.avatar;
+          contact.updatedAt = DateTime.now();
+          updated.add(contact);
+        }
       }
-    }
 
-    if (updated.isNotEmpty) {
-      await isar.isar.writeTxn(() async {
-        await isar.isar.contactModels.putAll(updated);
-      });
-      await _loadLocalContacts();
+      if (updated.isNotEmpty) {
+        await contactService.upsertContactsByCanonical(isar, updated);
+        await _loadLocalContacts();
+      }
+    } finally {
+      _isReconciling = false;
     }
   }
 
@@ -191,10 +202,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         }
       } else {
         final isar = context.read<IsarService>();
-        await isar.isar.writeTxn(() async {
-          await isar.isar.contactModels.clear();
-          await isar.isar.contactModels.putAll(matchedContacts);
-        });
+        await contactService.upsertContactsByCanonical(isar, matchedContacts);
 
         // Notify all screens about contact updates
         contactService.notifyUpdate();
@@ -281,17 +289,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
 
       final isar = context.read<IsarService>();
-      await isar.isar.writeTxn(() async {
-        final existing = await isar.isar.contactModels
-            .filter()
-            .phoneNumberEqualTo(contact.phoneNumber)
-            .findFirst();
-
-        if (existing != null) {
-          contact.id = existing.id;
-        }
-        await isar.isar.contactModels.put(contact);
-      });
+      await contactService.upsertContactsByCanonical(isar, [contact]);
 
       // Notify all screens about contact updates
       contactService.notifyUpdate();
@@ -360,27 +358,39 @@ class _ContactsScreenState extends State<ContactsScreen> {
             child: RefreshIndicator(
               onRefresh: () => _refreshData(forceRefresh: true),
               child: ListView.builder(
-                padding: EdgeInsets.fromLTRB(
-                  AppDimensions.width(context) * 0.03,
-                  AppDimensions.height(context) * 0.014,
-                  AppDimensions.width(context) * 0.03,
-                  AppDimensions.height(context) * 0.12,
-                ),
+                padding: AppDimensions.containerMargin(context),
                 itemCount: _contacts.length,
                 itemBuilder: (context, index) {
                   final contact = _contacts[index];
                   final balance = _balanceForContact(contact);
 
                   return AppContainer(
+                    margin: EdgeInsets.only(bottom: AppDimensions.height(context) * 0.012),
+                    radius: 18,
+                    border: Border.all(color: Colors.transparent, width: 0),
+                    shadows: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.04),
+                        blurRadius: 18,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                     child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                       leading: CircleAvatar(
-                        backgroundColor: _balanceColor(balance).withOpacity(0.13),
+                        radius: 24,
+                        backgroundColor: _balanceColor(balance).withOpacity(0.14),
                         child: Text(
                           (contact.name ?? 'U')[0].toUpperCase(),
                           style: TextStyle(
                             color: _balanceColor(balance),
                             fontWeight: FontWeight.w700,
+                            fontSize: 16,
                           ),
                         ),
                       ),
@@ -394,7 +404,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           color: _balanceColor(balance),
                         ),
                       ),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: Icon(Icons.chevron_right, color: AppColors.textTertiary.withOpacity(0.7)),
                       onTap: () {
                         Navigator.push(
                           context,
