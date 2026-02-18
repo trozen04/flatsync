@@ -1,13 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flatsync/src/data/models/expense_model.dart';
-import 'package:flatsync/src/presentation/state/providers.dart';
-import 'package:flatsync/src/core/constants/app_constants.dart';
-import 'package:flatsync/src/core/theme/app_colors.dart';
-import 'package:flatsync/src/core/theme/app_text_styles.dart';
-import 'package:flatsync/src/core/theme/app_spacing.dart';
-import 'package:flatsync/src/core/widgets/app_card.dart';
-import 'package:flatsync/src/core/widgets/app_input.dart';
+import '../../core/constants/app_dimensions.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text_styles.dart';
+import '../../services/expense_service.dart';
+import '../../presentation/state/contact_provider.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -17,251 +15,237 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  String? _selectedUser;
-  bool _showDeleted = true;
-  List<String> _availableUsers = [];
+  List<dynamic> _allTransactions = [];
+  bool _loading = true;
+  bool _loadingMore = false;
+  int _currentPage = 1;
+  final int _pageSize = 20;
+  StreamSubscription<int>? _updatesSub;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadHistory();
+      _scrollController.addListener(_onScroll);
+      _updatesSub = context.read<ExpenseService>().updates.listen((_) {
+        if (mounted) _loadHistory();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _updatesSub?.cancel();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      if (!_loadingMore) {
+        _loadMore();
+      }
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore) return;
+    setState(() => _loadingMore = true);
+    
+    try {
+      final expenseService = context.read<ExpenseService>();
+      final expenses = await expenseService.getExpenses(forceRefresh: false);
+      
+      final startIndex = _currentPage * _pageSize;
+      if (startIndex >= expenses.length) {
+        if (mounted) setState(() => _loadingMore = false);
+        return;
+      }
+      
+      final endIndex = (startIndex + _pageSize).clamp(0, expenses.length);
+      final newExpenses = expenses.sublist(startIndex, endIndex);
+      
+      final newHistory = newExpenses.map((e) => {
+        'type': 'expense',
+        'description': e.description ?? 'Expense',
+        'amount': e.amount,
+        'paidBy': e.paidBy,
+        'participants': e.participants,
+        'createdAt': e.createdAt,
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _allTransactions.addAll(newHistory);
+          _currentPage++;
+          _loadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _loadHistory() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _currentPage = 1;
+    });
+    
+    try {
+      final expenseService = context.read<ExpenseService>();
+      final expenses = await expenseService.getExpenses(forceRefresh: true);
+      
+      final endIndex = (_pageSize).clamp(0, expenses.length);
+      final history = expenses.sublist(0, endIndex).map((e) => {
+        'type': 'expense',
+        'description': e.description ?? 'Expense',
+        'amount': e.amount,
+        'paidBy': e.paidBy,
+        'participants': e.participants,
+        'createdAt': e.createdAt,
+      }).toList();
+
+      history.sort((a, b) => (b['createdAt'] as DateTime).compareTo(a['createdAt'] as DateTime));
+
+      if (mounted) setState(() {
+        _allTransactions = history;
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.background,
-      child: Column(
-        children: [
-          // Filters
-          Container(
-            padding: AppSpacing.screenPadding(context),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border(
-                bottom: BorderSide(color: AppColors.border, width: 1),
-              ),
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_allTransactions.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.history, size: 64, color: Colors.grey.shade400),
+            AppDimensions.h20(context),
+            Text(
+              'No history yet',
+              style: AppTextStyles.headlineSmall(context),
             ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: AppDropdownField<String>(
-                        label: 'Filter by User',
-                        hint: 'All Users',
-                        value: _selectedUser,
-                        items: [
-                          const DropdownMenuItem<String>(
-                            value: null,
-                            child: Text('All Users'),
-                          ),
-                          ...AppConstants.users.map((user) => DropdownMenuItem<String>(
-                            value: user,
-                            child: Text(user),
-                          )),
-                        ],
-                        onChanged: (value) {
-                          setState(() => _selectedUser = value);
-                        },
-                      ),
-                    ),
-                    AppSpacing.horizontalSpace(context, AppSpacing.lg),
-                    Column(
-                      children: [
-                        Text(
-                          'Show Deleted',
-                          style: AppTextStyles.labelMedium(context),
-                        ),
-                        AppSpacing.responsiveVerticalSpace(context, AppSpacing.xs),
-                        Switch(
-                          value: _showDeleted,
-                          onChanged: (value) {
-                            setState(() => _showDeleted = value);
-                          },
-                        ),
-                      ],
+            AppDimensions.h10(context),
+            Text(
+              'Your transaction history will appear here',
+              style: AppTextStyles.bodyMedium(context),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Consumer<ContactProvider>(
+      builder: (context, contactProvider, _) {
+        return RefreshIndicator(
+          onRefresh: _loadHistory,
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+            itemCount: _allTransactions.length + (_loadingMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index == _allTransactions.length) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+              
+              final item = _allTransactions[index];
+              final type = item['type'] as String;
+              final amount = (item['amount'] as int) / 100;
+              final description = item['description'] as String;
+              final paidBy = item['paidBy'] as String;
+              final date = item['createdAt'] as DateTime;
+              final displayName = contactProvider.getDisplayName(paidBy);
+              final amountColor = type == 'expense' ? AppColors.warning : AppColors.info;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.45),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          
-          // History List
-          Expanded(
-            child: Consumer<ExpenseProvider>(
-              builder: (context, provider, _) {
-                // Always use fixed 4 users for filtering
-                final fixedUsers = AppConstants.users;
-                
-                // Filter expenses
-                var filteredExpenses = provider.allExpenses.where((expense) {
-                  // User filter - compare base usernames
-                  if (_selectedUser != null) {
-                    final baseUsername = AppConstants.getBaseUsername(expense.paidBy);
-                    if (baseUsername != _selectedUser) {
-                      return false;
-                    }
-                  }
-                  
-                  // Deleted filter
-                  if (!_showDeleted && expense.isDeleted) {
-                    return false;
-                  }
-                  
-                  return true;
-                }).toList();
-                
-                // Sort by date (newest first)
-                filteredExpenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-                
-                if (filteredExpenses.isEmpty) {
-                  return Center(
-                    child: AppCard(
-                      type: AppCardType.outlined,
-                      child: Padding(
-                        padding: EdgeInsets.all(AppSpacing.responsive(context, AppSpacing.xxxl)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: type == 'expense' ? Colors.orange.shade50 : Colors.blue.shade50,
+                          shape: BoxShape.circle,
+                        ),
+                          child: Icon(
+                            type == 'expense' ? Icons.receipt_long : Icons.payment,
+                          color: type == 'expense' ? Colors.orange.shade600 : Colors.blue.shade600,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
                         child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.history,
-                              size: AppSpacing.responsive(context, 48),
-                              color: AppColors.textTertiary,
-                            ),
-                            AppSpacing.responsiveVerticalSpace(context, AppSpacing.lg),
                             Text(
-                              'No expenses found',
-                              style: AppTextStyles.titleMedium(context).copyWith(
-                                color: AppColors.textSecondary,
-                              ),
+                              description,
+                              style: AppTextStyles.titleMedium(context),
                             ),
-                            AppSpacing.responsiveVerticalSpace(context, AppSpacing.sm),
+                            AppDimensions.h5(context),
                             Text(
-                              'Try adjusting your filters',
-                              style: AppTextStyles.bodyMedium(context),
-                              textAlign: TextAlign.center,
+                              displayName,
+                              style: AppTextStyles.bodySmall(context),
+                            ),
+                            AppDimensions.h5(context),
+                            Text(
+                              '${date.day}/${date.month}/${date.year} at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
+                              style: AppTextStyles.caption(context),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  );
-                }
-                
-                return ListView.separated(
-                  padding: AppSpacing.screenPadding(context),
-                  itemCount: filteredExpenses.length,
-                  separatorBuilder: (context, index) => 
-                      AppSpacing.responsiveVerticalSpace(context, AppSpacing.sm),
-                  itemBuilder: (context, index) {
-                    final expense = filteredExpenses[index];
-                    return _HistoryExpenseItem(expense: expense);
-                  },
-                );
-              },
-            ),
+                      Text(
+                        'Rs ${amount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: amountColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
-class _HistoryExpenseItem extends StatelessWidget {
-  final ExpenseModel expense;
-
-  const _HistoryExpenseItem({required this.expense});
-
-  @override
-  Widget build(BuildContext context) {
-    final amount = expense.amount / 100;
-    
-    return AppCard(
-      type: AppCardType.outlined,
-      padding: EdgeInsets.zero,
-      child: Container(
-        decoration: expense.isDeleted ? BoxDecoration(
-          color: AppColors.error.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 12)),
-        ) : null,
-        child: AppListTile(
-          leading: CircleAvatar(
-            backgroundColor: expense.isDeleted 
-                ? AppColors.error.withOpacity(0.1)
-                : AppColors.primary.withOpacity(0.1),
-            child: expense.isDeleted 
-                ? Icon(
-                    Icons.delete_outline,
-                    color: AppColors.error,
-                    size: AppSpacing.responsive(context, 20),
-                  )
-                : Text(
-                    expense.paidBy[0].toUpperCase(),
-                    style: AppTextStyles.labelLarge(context).copyWith(
-                      color: AppColors.primary,
-                    ),
-                  ),
-          ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${expense.paidBy} paid ₹${amount.toStringAsFixed(2)}',
-                  style: AppTextStyles.titleSmall(context).copyWith(
-                    decoration: expense.isDeleted ? TextDecoration.lineThrough : null,
-                    color: expense.isDeleted ? AppColors.textTertiary : null,
-                  ),
-                ),
-              ),
-              if (expense.isDeleted)
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: AppSpacing.responsive(context, AppSpacing.sm),
-                    vertical: AppSpacing.responsive(context, AppSpacing.xs),
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 4)),
-                  ),
-                  child: Text(
-                    'DELETED',
-                    style: AppTextStyles.labelSmall(context).copyWith(
-                      color: AppColors.error,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (expense.description != null && expense.description!.isNotEmpty) ...[
-                AppSpacing.responsiveVerticalSpace(context, AppSpacing.xs),
-                Text(
-                  expense.description!,
-                  style: AppTextStyles.bodyMedium(context).copyWith(
-                    decoration: expense.isDeleted ? TextDecoration.lineThrough : null,
-                    color: expense.isDeleted ? AppColors.textTertiary : null,
-                  ),
-                ),
-              ],
-              AppSpacing.responsiveVerticalSpace(context, AppSpacing.xs),
-              Text(
-                'Created: ${_formatDate(expense.createdAt)}',
-                style: AppTextStyles.bodySmall(context),
-              ),
-              if (expense.isDeleted && expense.deletedAt != null)
-                Text(
-                  'Deleted: ${_formatDate(expense.deletedAt!)}',
-                  style: AppTextStyles.bodySmall(context).copyWith(
-                    color: AppColors.error,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-  }
-}

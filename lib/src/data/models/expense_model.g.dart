@@ -57,13 +57,18 @@ const ExpenseModelSchema = CollectionSchema(
       name: r'paidBy',
       type: IsarType.string,
     ),
-    r'syncedAt': PropertySchema(
+    r'participants': PropertySchema(
       id: 8,
+      name: r'participants',
+      type: IsarType.stringList,
+    ),
+    r'syncedAt': PropertySchema(
+      id: 9,
       name: r'syncedAt',
       type: IsarType.dateTime,
     ),
     r'uuid': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'uuid',
       type: IsarType.string,
     )
@@ -123,6 +128,13 @@ int _expenseModelEstimateSize(
   }
   bytesCount += 3 + object.deviceId.length * 3;
   bytesCount += 3 + object.paidBy.length * 3;
+  bytesCount += 3 + object.participants.length * 3;
+  {
+    for (var i = 0; i < object.participants.length; i++) {
+      final value = object.participants[i];
+      bytesCount += value.length * 3;
+    }
+  }
   bytesCount += 3 + object.uuid.length * 3;
   return bytesCount;
 }
@@ -141,8 +153,9 @@ void _expenseModelSerialize(
   writer.writeBool(offsets[5], object.isDeleted);
   writer.writeDateTime(offsets[6], object.lastModifiedAt);
   writer.writeString(offsets[7], object.paidBy);
-  writer.writeDateTime(offsets[8], object.syncedAt);
-  writer.writeString(offsets[9], object.uuid);
+  writer.writeStringList(offsets[8], object.participants);
+  writer.writeDateTime(offsets[9], object.syncedAt);
+  writer.writeString(offsets[10], object.uuid);
 }
 
 ExpenseModel _expenseModelDeserialize(
@@ -161,9 +174,10 @@ ExpenseModel _expenseModelDeserialize(
     isDeleted: reader.readBoolOrNull(offsets[5]) ?? false,
     lastModifiedAt: reader.readDateTime(offsets[6]),
     paidBy: reader.readString(offsets[7]),
-    uuid: reader.readString(offsets[9]),
+    participants: reader.readStringList(offsets[8]) ?? const [],
+    uuid: reader.readString(offsets[10]),
   );
-  object.syncedAt = reader.readDateTime(offsets[8]);
+  object.syncedAt = reader.readDateTime(offsets[9]);
   return object;
 }
 
@@ -191,8 +205,10 @@ P _expenseModelDeserializeProp<P>(
     case 7:
       return (reader.readString(offset)) as P;
     case 8:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readStringList(offset) ?? const []) as P;
     case 9:
+      return (reader.readDateTime(offset)) as P;
+    case 10:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1239,6 +1255,231 @@ extension ExpenseModelQueryFilter
   }
 
   QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'participants',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'participants',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'participants',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'participants',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'participants',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'participants',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'participants',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'participants',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'participants',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsElementIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'participants',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsLengthEqualTo(int length) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'participants',
+        length,
+        true,
+        length,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'participants',
+        0,
+        true,
+        0,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'participants',
+        0,
+        false,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsLengthLessThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'participants',
+        0,
+        true,
+        length,
+        include,
+      );
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsLengthGreaterThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'participants',
+        length,
+        include,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
+      participantsLengthBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'participants',
+        lower,
+        includeLower,
+        upper,
+        includeUpper,
+      );
+    });
+  }
+
+  QueryBuilder<ExpenseModel, ExpenseModel, QAfterFilterCondition>
       syncedAtEqualTo(DateTime value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
@@ -1753,6 +1994,12 @@ extension ExpenseModelQueryWhereDistinct
     });
   }
 
+  QueryBuilder<ExpenseModel, ExpenseModel, QDistinct> distinctByParticipants() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'participants');
+    });
+  }
+
   QueryBuilder<ExpenseModel, ExpenseModel, QDistinct> distinctBySyncedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'syncedAt');
@@ -1821,6 +2068,13 @@ extension ExpenseModelQueryProperty
   QueryBuilder<ExpenseModel, String, QQueryOperations> paidByProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'paidBy');
+    });
+  }
+
+  QueryBuilder<ExpenseModel, List<String>, QQueryOperations>
+      participantsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'participants');
     });
   }
 

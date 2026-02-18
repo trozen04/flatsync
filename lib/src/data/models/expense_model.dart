@@ -16,8 +16,11 @@ class ExpenseModel {
   /// Amount in smallest currency unit (e.g., paise for INR)
   int amount = 0;
 
-  /// User who paid for this expense (dynamic string instead of enum)
+  /// User who paid for this expense (backend user ID)
   String paidBy = '';
+  
+  /// List of participant user IDs (including paidBy)
+  List<String> participants = [];
 
   /// Timestamp when expense was created (UTC)
   DateTime createdAt = DateTime.now().toUtc();
@@ -46,6 +49,7 @@ class ExpenseModel {
     required this.uuid,
     required this.amount,
     required this.paidBy,
+    this.participants = const [],
     required this.createdAt,
     required this.lastModifiedAt,
     required this.deviceId,
@@ -60,6 +64,7 @@ class ExpenseModel {
       'uuid': uuid,
       'amount': amount,
       'paidBy': paidBy,
+      'participants': participants,
       'createdAt': createdAt.toIso8601String(),
       'lastModifiedAt': lastModifiedAt.toIso8601String(),
       'deviceId': deviceId,
@@ -71,13 +76,48 @@ class ExpenseModel {
 
   /// Create from JSON received from network
   factory ExpenseModel.fromJson(Map<String, dynamic> json) {
+    final rawParticipants = json['participants'] as List?;
+    final normalizedParticipants = (rawParticipants ?? [])
+        .map((e) {
+          if (e is String) return e;
+          if (e is Map<String, dynamic>) {
+            final phone = e['phoneNumber'];
+            if (phone is String && phone.isNotEmpty) return phone;
+            final user = e['user'];
+            if (user is String && user.isNotEmpty) return user;
+          }
+          return null;
+        })
+        .whereType<String>()
+        .toList();
+
+    final createdBy = json['createdBy'];
+    final paidBy = (json['paidBy'] as String?) ??
+        (createdBy is Map<String, dynamic>
+            ? ((createdBy['phoneNumber'] as String?) ??
+                (createdBy['_id'] as String?) ??
+                (createdBy['name'] as String?))
+            : (createdBy as String?)) ??
+        '';
+
     return ExpenseModel(
-      uuid: json['uuid'] as String,
-      amount: json['amount'] as int,
-      paidBy: json['paidBy'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      lastModifiedAt: DateTime.parse(json['lastModifiedAt'] as String),
-      deviceId: json['deviceId'] as String,
+      uuid: (json['uuid'] as String?) ??
+          (json['_id'] as String?) ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
+      amount: (json['amount'] as int?) ??
+          ((json['totalAmount'] as num?)?.toInt() ?? 0),
+      paidBy: paidBy,
+      participants: normalizedParticipants,
+      createdAt: DateTime.parse(
+        (json['createdAt'] as String?) ?? DateTime.now().toUtc().toIso8601String(),
+      ),
+      lastModifiedAt: DateTime.parse(
+        (json['lastModifiedAt'] as String?) ??
+            (json['updatedAt'] as String?) ??
+            (json['createdAt'] as String?) ??
+            DateTime.now().toUtc().toIso8601String(),
+      ),
+      deviceId: (json['deviceId'] as String?) ?? 'server',
       description: json['description'] as String?,
       isDeleted: json['isDeleted'] as bool? ?? false,
       deletedAt: json['deletedAt'] != null ? DateTime.parse(json['deletedAt'] as String) : null,

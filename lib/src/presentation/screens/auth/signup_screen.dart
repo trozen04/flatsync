@@ -1,0 +1,150 @@
+import 'package:flutter/material.dart';
+import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:provider/provider.dart';
+import 'dart:developer' as developer;
+import '../../../core/constants/app_dimensions.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../services/auth_service.dart';
+import '../../../utils/custom_snackbar.dart';
+import 'otp_verify_screen.dart';
+
+class SignupScreen extends StatefulWidget {
+  const SignupScreen({super.key});
+
+  static DateTime? _lastOtpRequest;
+
+  @override
+  State<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends State<SignupScreen> {
+  String _phoneNumber = '';
+  bool _loading = false;
+  int _countdown = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateCountdown();
+  }
+
+  void _updateCountdown() {
+    if (SignupScreen._lastOtpRequest != null) {
+      final elapsed = DateTime.now().difference(SignupScreen._lastOtpRequest!).inSeconds;
+      final remaining = 10 - elapsed;
+      if (remaining > 0) {
+        setState(() => _countdown = remaining);
+        _startCountdown();
+      }
+    }
+  }
+
+  void _startCountdown() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      setState(() => _countdown--);
+      return _countdown > 0;
+    });
+  }
+
+  Future<void> _sendOtp() async {
+    if (_phoneNumber.isEmpty) {
+      CustomSnackBar.show(context, message: 'Enter phone number', isError: true);
+      return;
+    }
+
+    if (_countdown > 0) {
+      CustomSnackBar.show(context, message: 'Please wait $_countdown seconds', isError: true);
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      final authService = context.read<AuthService>();
+      await authService.sendSignupOtp(_phoneNumber);
+
+      SignupScreen._lastOtpRequest = DateTime.now();
+      setState(() => _countdown = 10);
+      _startCountdown();
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OtpVerifyScreen(phoneNumber: _phoneNumber),
+          ),
+        );
+      }
+    } catch (e) {
+      developer.log('Signup OTP error: $e');
+      if (mounted) {
+        String errorMsg = 'Oops! Something went wrong';
+        if (e.toString().contains('429')) {
+          errorMsg = 'Please wait before requesting another OTP';
+          SignupScreen._lastOtpRequest = DateTime.now();
+          setState(() => _countdown = 10);
+          _startCountdown();
+        } else if (e.toString().contains('SocketException') || e.toString().contains('Connection')) {
+          errorMsg = 'Cannot connect to server';
+        } else if (e.toString().contains('400') || e.toString().contains('exists')) {
+          errorMsg = 'Phone already registered';
+        } else if (e.toString().contains('timeout')) {
+          errorMsg = 'Request timeout';
+        }
+        CustomSnackBar.show(context, message: errorMsg, isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sign Up')),
+      body: Padding(
+        padding: AppDimensions.appMargin(context),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IntlPhoneField(
+              initialCountryCode: 'IN',
+              disableLengthCheck: true,
+              decoration: const InputDecoration(
+                labelText: 'Phone Number',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (phone) {
+                _phoneNumber = phone.completeNumber;
+              },
+            ),
+            AppDimensions.h20(context),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: (_loading || _countdown > 0) ? null : _sendOtp,
+                child: _loading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        _countdown > 0 ? 'Wait $_countdown seconds' : 'Send OTP',
+                        style: AppTextStyles.titleMedium(context),
+                      ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Already have account? Login'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

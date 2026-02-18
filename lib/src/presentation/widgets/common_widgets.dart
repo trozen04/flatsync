@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:flatsync/src/data/models/expense_model.dart';
 import 'package:flatsync/src/domain/entities/settlement_entity.dart';
 import 'package:flatsync/src/core/theme/app_colors.dart';
@@ -10,6 +11,7 @@ import 'package:flatsync/src/core/widgets/app_card.dart';
 import 'package:flatsync/src/core/widgets/app_input.dart';
 import 'package:flatsync/src/core/user/user_profile.dart';
 import 'package:flatsync/src/core/constants/app_constants.dart';
+import 'package:flatsync/src/presentation/state/contact_provider.dart';
 
 /// User dropdown widget for selecting who paid
 class UserDropdown extends StatefulWidget {
@@ -124,6 +126,8 @@ class ExpenseListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final amount = expense.amount / 100;
+    final contactProvider = context.watch<ContactProvider>();
+    final displayName = contactProvider.getDisplayName(expense.paidBy);
     
     return AppCard(
       type: AppCardType.outlined,
@@ -132,14 +136,14 @@ class ExpenseListItem extends StatelessWidget {
         leading: CircleAvatar(
           backgroundColor: AppColors.primary.withOpacity(0.1),
           child: Text(
-            expense.paidBy[0].toUpperCase(),
+            displayName[0].toUpperCase(),
             style: AppTextStyles.labelLarge(context).copyWith(
               color: AppColors.primary,
             ),
           ),
         ),
         title: Text(
-          '${expense.paidBy} paid ₹${amount.toStringAsFixed(2)}',
+          '$displayName paid ₹${amount.toStringAsFixed(2)}',
           style: AppTextStyles.titleSmall(context),
         ),
         subtitle: Column(
@@ -251,6 +255,8 @@ class BalanceCard extends StatelessWidget {
         ? AppColors.success 
         : (netBalance < 0 ? AppColors.error : AppColors.textSecondary);
     final isPositive = netBalance >= 0;
+    final contactProvider = context.watch<ContactProvider>();
+    final displayName = contactProvider.getDisplayName(userName);
 
     return AppCard(
       type: AppCardType.elevated,
@@ -262,7 +268,7 @@ class BalanceCard extends StatelessWidget {
               CircleAvatar(
                 backgroundColor: AppColors.primary.withOpacity(0.1),
                 child: Text(
-                  userName[0].toUpperCase(),
+                  displayName[0].toUpperCase(),
                   style: AppTextStyles.labelLarge(context).copyWith(
                     color: AppColors.primary,
                   ),
@@ -271,7 +277,7 @@ class BalanceCard extends StatelessWidget {
               AppSpacing.horizontalSpace(context, AppSpacing.md),
               Expanded(
                 child: Text(
-                  userName,
+                  displayName,
                   style: AppTextStyles.titleMedium(context),
                 ),
               ),
@@ -336,6 +342,9 @@ class SettlementItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settleAmount = amount / 100;
+    final contactProvider = context.watch<ContactProvider>();
+    final fromName = contactProvider.getDisplayName(from);
+    final toName = contactProvider.getDisplayName(to);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -349,7 +358,7 @@ class SettlementItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    from,
+                    fromName,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -380,7 +389,7 @@ class SettlementItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    to,
+                    toName,
                     textAlign: TextAlign.end,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
