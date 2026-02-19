@@ -22,7 +22,6 @@ class ConversationScreen extends StatefulWidget {
 
 class _ConversationScreenState extends State<ConversationScreen> {
   List<dynamic> _transactions = [];
-  bool _initialLoading = true;
   bool _refreshing = false;
   bool _loadingMore = false;
   bool _hasMore = true;
@@ -37,7 +36,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   @override
   void initState() {
     super.initState();
-    _loadConversation(initial: true);
+    unawaited(_loadConversation(forceRefresh: false));
     _loadCurrentUserId();
     _scrollController.addListener(_onScroll);
     _updatesSub = context.read<ExpenseService>().updates.listen((_) {
@@ -65,6 +64,28 @@ class _ConversationScreenState extends State<ConversationScreen> {
         _loadMore();
       }
     }
+  }
+
+  String _canonicalPhone(String? value) {
+    final digits = (value ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length > 10) return digits.substring(digits.length - 10);
+    return digits;
+  }
+
+  double _resolveContactBalance(Map<String, dynamic> balances) {
+    final contactId = widget.contact.contactId;
+    if (contactId != null && contactId.isNotEmpty) {
+      final byId = balances[contactId];
+      if (byId is num) return byId.toDouble();
+    }
+
+    final contactPhone = _canonicalPhone(widget.contact.phoneNumber);
+    for (final entry in balances.entries) {
+      if (_canonicalPhone(entry.key) == contactPhone && entry.value is num) {
+        return (entry.value as num).toDouble();
+      }
+    }
+    return 0;
   }
 
   Future<void> _loadMore() async {
@@ -215,28 +236,36 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
-  Future<void> _loadConversation({bool initial = false, bool forceRefresh = false}) async {
-    if (initial) {
-      setState(() {
-        _initialLoading = true;
-        _currentPage = 1;
-        _hasMore = true;
-      });
-    } else {
-      setState(() => _refreshing = true);
-    }
+  Future<void> _loadConversation({bool forceRefresh = false}) async {
+    setState(() => _refreshing = true);
 
     try {
       final contactId = widget.contact.contactId;
       final expenseService = context.read<ExpenseService>();
-      final conversation = (contactId != null && contactId.isNotEmpty)
-          ? await expenseService.getConversation(contactId, forceRefresh: forceRefresh, page: 1)
-          : await expenseService.getConversationByPhone(widget.contact.phoneNumber ?? '', forceRefresh: forceRefresh);
-
-      double balance = 0;
-      for (final item in conversation) {
-        balance += (item['signedAmount'] as num?)?.toDouble() ?? 0;
+      List<dynamic> conversation;
+      if (contactId != null && contactId.isNotEmpty) {
+        try {
+          conversation = await expenseService.getConversation(
+            contactId,
+            forceRefresh: forceRefresh,
+            page: 1,
+          );
+        } catch (_) {
+          // Fallback to local expense-derived timeline if network/API conversation fetch fails.
+          conversation = await expenseService.getConversationByPhone(
+            widget.contact.phoneNumber ?? '',
+            forceRefresh: false,
+          );
+        }
+      } else {
+        conversation = await expenseService.getConversationByPhone(
+          widget.contact.phoneNumber ?? '',
+          forceRefresh: forceRefresh,
+        );
       }
+
+      final balances = await expenseService.getBalances(forceRefresh: forceRefresh);
+      final balance = _resolveContactBalance(balances);
 
       if (mounted) setState(() {
         _transactions = conversation;
@@ -247,10 +276,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     } catch (e) {
       developer.log('Load conversation error: $e');
     } finally {
-      if (mounted) setState(() {
-        _initialLoading = false;
-        _refreshing = false;
-      });
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 
@@ -297,28 +323,26 @@ class _ConversationScreenState extends State<ConversationScreen> {
             ),
           ),
           Expanded(
-            child: _initialLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _transactions.isEmpty
-                    ? RefreshIndicator(
-                        onRefresh: () => _loadConversation(forceRefresh: true),
-                        child: ListView(
-                          children: [
-                            SizedBox(height: AppDimensions.height(context) * 0.2),
-                            Center(
-                              child: Text('No transactions yet', style: AppTextStyles.bodyMedium(context)),
-                            ),
-                          ],
+            child: _transactions.isEmpty
+                ? RefreshIndicator(
+                    onRefresh: () => _loadConversation(forceRefresh: true),
+                    child: ListView(
+                      children: [
+                        SizedBox(height: AppDimensions.height(context) * 0.2),
+                        Center(
+                          child: Text('No transactions yet', style: AppTextStyles.bodyMedium(context)),
                         ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () => _loadConversation(forceRefresh: true),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.all(16),
-                          reverse: true,
-                          itemCount: _transactions.length + (_loadingMore ? 1 : 0),
-                          itemBuilder: (context, index) {
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: () => _loadConversation(forceRefresh: true),
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      reverse: true,
+                      itemCount: _transactions.length + (_loadingMore ? 1 : 0),
+                      itemBuilder: (context, index) {
                             if (index == _transactions.length) {
                               return const Center(
                                 child: Padding(
@@ -472,9 +496,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               ),
                             ),
                           );
-                          },
-                        ),
-                      ),
+                      },
+                    ),
+                  ),
           ),
           SafeArea(
             top: false,

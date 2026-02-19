@@ -37,18 +37,22 @@ class ContactProvider extends ChangeNotifier {
   ContactModel? getContactByPhone(String? phone) {
     if (phone == null || phone.isEmpty) return null;
     final canonical = _canonicalPhone(phone);
-    return _contacts.firstWhere(
-      (c) => _canonicalPhone(c.phoneNumber) == canonical,
-      orElse: () => ContactModel(phoneNumber: phone, name: phone),
-    );
+    for (final contact in _contacts) {
+      if (_canonicalPhone(contact.phoneNumber) == canonical) {
+        return contact;
+      }
+    }
+    return null;
   }
 
   ContactModel? getContactById(String? id) {
     if (id == null || id.isEmpty) return null;
-    return _contacts.firstWhere(
-      (c) => c.contactId == id,
-      orElse: () => ContactModel(contactId: id, name: id),
-    );
+    for (final contact in _contacts) {
+      if (contact.contactId == id) {
+        return contact;
+      }
+    }
+    return null;
   }
 
   String _canonicalPhone(String? phone) {
@@ -58,21 +62,56 @@ class ContactProvider extends ChangeNotifier {
     return digits;
   }
 
+  bool _looksLikePhoneName(String? value) {
+    if (value == null || value.trim().isEmpty) return true;
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    return digits.length >= 7;
+  }
+
   String getDisplayName(String? identifier) {
     if (identifier == null || identifier.isEmpty) return 'Unknown';
-    
-    // Try by ID first
+
+    // Try by ID first if it has a real name.
     final byId = getContactById(identifier);
-    if (byId != null && byId.name != null && byId.name!.isNotEmpty) {
-      return byId.name!;
+    if (byId != null &&
+        byId.name != null &&
+        byId.name!.trim().isNotEmpty &&
+        !_looksLikePhoneName(byId.name)) {
+      return byId.name!.trim();
     }
-    
-    // Try by phone
+
+    // Try best phone match and prefer non-phone-like names.
+    final canonical = _canonicalPhone(identifier);
+    if (canonical.isNotEmpty) {
+      ContactModel? fallbackMatch;
+      for (final contact in _contacts) {
+        if (_canonicalPhone(contact.phoneNumber) != canonical) continue;
+        final hasUsableName =
+            contact.name != null && contact.name!.trim().isNotEmpty;
+        if (!hasUsableName) continue;
+        if (!_looksLikePhoneName(contact.name)) {
+          return contact.name!.trim();
+        }
+        fallbackMatch ??= contact;
+      }
+      if (fallbackMatch != null && fallbackMatch.name != null) {
+        return fallbackMatch.name!.trim();
+      }
+    }
+
+    // Fallback direct phone lookup.
     final byPhone = getContactByPhone(identifier);
-    if (byPhone != null && byPhone.name != null && byPhone.name!.isNotEmpty) {
-      return byPhone.name!;
+    if (byPhone != null &&
+        byPhone.name != null &&
+        byPhone.name!.trim().isNotEmpty) {
+      return byPhone.name!.trim();
     }
-    
+
+    // If ID contact exists but only has phone-like name, still show it as last resort.
+    if (byId != null && byId.name != null && byId.name!.trim().isNotEmpty) {
+      return byId.name!.trim();
+    }
+
     return identifier;
   }
 }

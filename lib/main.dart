@@ -22,7 +22,7 @@ Future<void> main() async {
   final apiService = ApiService();
   final authService = AuthService(apiService);
   final contactService = ContactService(apiService);
-  final expenseService = ExpenseService(apiService);
+  final expenseService = ExpenseService(apiService, isarService);
 
   runApp(
     MultiProvider(

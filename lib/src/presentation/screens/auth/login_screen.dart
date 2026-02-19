@@ -66,14 +66,9 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       developer.log('Login error: $e');
       if (mounted) {
-        String errorMsg = 'Oops! Something went wrong';
-        if (e.toString().contains('401') || e.toString().contains('Invalid')) {
-          errorMsg = 'Invalid phone or PIN';
-        } else if (e.toString().contains('SocketException') || e.toString().contains('Connection')) {
-          errorMsg = 'Cannot connect to server';
-        } else if (e.toString().contains('timeout')) {
-          errorMsg = 'Request timeout';
-        }
+        final errorMsg = context
+            .read<AuthService>()
+            .getAuthErrorMessage(e, flow: AuthFlow.login);
         CustomSnackBar.show(context, message: errorMsg, isError: true);
       }
     } finally {

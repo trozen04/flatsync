@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:dio/dio.dart';
 import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../../../core/constants/app_dimensions.dart';
@@ -80,18 +81,16 @@ class _SignupScreenState extends State<SignupScreen> {
     } catch (e) {
       developer.log('Signup OTP error: $e');
       if (mounted) {
-        String errorMsg = 'Oops! Something went wrong';
-        if (e.toString().contains('429')) {
-          errorMsg = 'Please wait before requesting another OTP';
+        final errorMsg = context
+            .read<AuthService>()
+            .getAuthErrorMessage(e, flow: AuthFlow.sendSignupOtp);
+
+        final isTooManyRequests =
+            e is DioException && e.response?.statusCode == 429;
+        if (isTooManyRequests) {
           SignupScreen._lastOtpRequest = DateTime.now();
           setState(() => _countdown = 10);
           _startCountdown();
-        } else if (e.toString().contains('SocketException') || e.toString().contains('Connection')) {
-          errorMsg = 'Cannot connect to server';
-        } else if (e.toString().contains('400') || e.toString().contains('exists')) {
-          errorMsg = 'Phone already registered';
-        } else if (e.toString().contains('timeout')) {
-          errorMsg = 'Request timeout';
         }
         CustomSnackBar.show(context, message: errorMsg, isError: true);
       }

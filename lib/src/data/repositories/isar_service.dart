@@ -68,7 +68,7 @@ class IsarService {
       final existing = await isar.expenseModels.where().uuidEqualTo(expense.uuid).findFirst();
       
       if (existing != null) {
-        if (expense.lastModifiedAt.isAfter(existing.lastModifiedAt)) {
+        if (!expense.lastModifiedAt.isBefore(existing.lastModifiedAt)) {
           expense.id = existing.id;
           await isar.expenseModels.put(expense);
         }
@@ -84,7 +84,7 @@ class IsarService {
         final existing = await isar.expenseModels.where().uuidEqualTo(expense.uuid).findFirst();
         
         if (existing != null) {
-          if (expense.lastModifiedAt.isAfter(existing.lastModifiedAt)) {
+          if (!expense.lastModifiedAt.isBefore(existing.lastModifiedAt)) {
             expense.id = existing.id;
             await isar.expenseModels.put(expense);
           }

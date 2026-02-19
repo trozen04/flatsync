@@ -26,7 +26,6 @@ class BalancesScreen extends StatefulWidget {
 
 class _BalancesScreenState extends State<BalancesScreen> {
   Map<String, dynamic> _balances = {};
-  bool _initialLoading = true;
   bool _refreshing = false;
   double _netBalance = 0;
   static const double _currencyDivisor = 100.0;
@@ -40,9 +39,9 @@ class _BalancesScreenState extends State<BalancesScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadBalances(initial: true);
+      unawaited(_loadBalances(forceRefresh: false));
       _updatesSub = context.read<ExpenseService>().updates.listen((_) {
-        if (mounted) _loadBalances(initial: false, forceRefresh: true);
+        if (mounted) _loadBalances(forceRefresh: true);
       });
       _contactUpdatesSub = context.read<ContactService>().updates.listen((_) async {
         if (!mounted) return;
@@ -81,9 +80,9 @@ class _BalancesScreenState extends State<BalancesScreen> {
     };
   }
 
-  Future<void> _loadBalances({bool initial = false, bool forceRefresh = false}) async {
+  Future<void> _loadBalances({bool forceRefresh = false}) async {
     if (!mounted) return;
-    setState(() => initial ? _initialLoading = true : _refreshing = true);
+    setState(() => _refreshing = true);
 
     try {
       if (!mounted) return;
@@ -109,10 +108,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
     } catch (e) {
       developer.log('Load balances error: $e');
     } finally {
-      if (mounted) setState(() {
-        _initialLoading = false;
-        _refreshing = false;
-      });
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 
@@ -137,30 +133,33 @@ class _BalancesScreenState extends State<BalancesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_initialLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     if (_balances.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: () => _loadBalances(forceRefresh: true),
-        child: ListView(
-          children: [
-            AppDimensions.h100(context),
-            const Icon(Icons.account_balance_wallet_outlined, size: 64, color: AppColors.textTertiary),
-            AppDimensions.h20(context),
-            Center(
-              child: Text(
-                'No balances yet',
-                style: AppTextStyles.headlineSmall(context),
+      return Column(
+        children: [
+          if (_refreshing) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => _loadBalances(forceRefresh: true),
+              child: ListView(
+                children: [
+                  AppDimensions.h100(context),
+                  const Icon(Icons.account_balance_wallet_outlined, size: 64, color: AppColors.textTertiary),
+                  AppDimensions.h20(context),
+                  Center(
+                    child: Text(
+                      'No balances yet',
+                      style: AppTextStyles.headlineSmall(context),
+                    ),
+                  ),
+                  AppDimensions.h10(context),
+                  Center(
+                    child: Text('Add expenses to see balances', style: AppTextStyles.bodyMedium(context)),
+                  ),
+                ],
               ),
             ),
-            AppDimensions.h10(context),
-            Center(
-              child: Text('Add expenses to see balances', style: AppTextStyles.bodyMedium(context)),
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
@@ -279,4 +278,3 @@ class _BalancesScreenState extends State<BalancesScreen> {
     );
   }
 }
-

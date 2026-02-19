@@ -1,7 +1,7 @@
 class ApiConfig {
   // For mobile device: Use your computer's IP address
   // Find IP: Windows (ipconfig) | Mac/Linux (ifconfig)
-  static const String baseUrl = 'http://192.168.1.52:5000/api'; // Change to your IP
+  static const String baseUrl = 'http://192.168.1.48:5000/api'; // Change to your IP
   
   // For emulator: Use 10.0.2.2
   // static const String baseUrl = 'http://10.0.2.2:5000/api';

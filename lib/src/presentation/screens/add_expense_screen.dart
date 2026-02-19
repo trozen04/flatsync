@@ -30,6 +30,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   List<ContactModel> _contacts = [];
   final List<String> _selectedParticipants = [];
+  List<int> _recentAmountsPaise = [];
 
   bool _loadingContacts = true;
   bool _submitting = false;
@@ -42,6 +43,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _loadLocalContacts();
+        _loadRecentAmounts();
         _syncContactsFromBalances(forceRefresh: true);
         _expenseUpdatesSub = context.read<ExpenseService>().updates.listen((_) {
           if (mounted) _syncContactsFromBalances(forceRefresh: true);
@@ -98,6 +100,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
   }
 
+  Future<void> _loadRecentAmounts() async {
+    try {
+      final recent = await context.read<ExpenseService>().getRecentAmounts();
+      if (!mounted) return;
+      setState(() => _recentAmountsPaise = recent);
+    } catch (_) {}
+  }
+
   Future<void> _addExpense() async {
     if (_descController.text.trim().isEmpty || _amountController.text.trim().isEmpty) {
       CustomSnackBar.show(context, message: 'Fill all fields', isError: true);
@@ -128,6 +138,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       CustomSnackBar.show(context, message: 'Expense added successfully');
       _descController.clear();
       _amountController.clear();
+      await _loadRecentAmounts();
       setState(() {
         _selectedParticipants.clear();
       });
@@ -224,6 +235,23 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           onChanged: (_) => setState(() {}),
                           style: AppTextStyles.currencyLarge(context),
                         ),
+                        if (_recentAmountsPaise.isNotEmpty) ...[
+                          AppDimensions.h10(context),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _recentAmountsPaise.map((paise) {
+                              final rupees = paise / 100;
+                              return ActionChip(
+                                label: Text('Rs ${rupees.toStringAsFixed(2)}'),
+                                onPressed: () {
+                                  _amountController.text = rupees.toStringAsFixed(2);
+                                  setState(() {});
+                                },
+                              );
+                            }).toList(),
+                          ),
+                        ],
                         AppDimensions.h20(context),
                         TextField(
                           controller: _descController,

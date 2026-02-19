@@ -18,6 +18,14 @@ class ContactService {
 
   ContactService(this._api);
 
+  void _logResponseUser(String source, Map<String, dynamic> user, {int? index}) {
+    final id = user['_id'] ?? user['id'];
+    final phone = user['phoneNumber'];
+    final name = user['name'];
+    final suffix = index == null ? '' : '[$index]';
+    developer.log('$source$suffix user -> id=$id, phone=$phone, name=$name');
+  }
+
   Stream<int> get updates => _updatesController.stream;
 
   void notifyUpdate() {
@@ -52,11 +60,13 @@ class ContactService {
       
       // Extract from owesMe
       final owesMe = (data['owesMe'] as List?) ?? [];
-      for (final item in owesMe) {
+      for (var i = 0; i < owesMe.length; i++) {
+        final item = owesMe[i];
         if (item is! Map<String, dynamic>) continue;
         final user = item['user'];
         if (user is Map<String, dynamic>) {
           try {
+            _logResponseUser('balances.owesMe', user, index: i);
             contacts.add(ContactModel.fromJson(user));
           } catch (e) {
             developer.log('Failed to parse user from owesMe: $e');
@@ -66,11 +76,13 @@ class ContactService {
       
       // Extract from iOwe
       final iOwe = (data['iOwe'] as List?) ?? [];
-      for (final item in iOwe) {
+      for (var i = 0; i < iOwe.length; i++) {
+        final item = iOwe[i];
         if (item is! Map<String, dynamic>) continue;
         final user = item['user'];
         if (user is Map<String, dynamic>) {
           try {
+            _logResponseUser('balances.iOwe', user, index: i);
             contacts.add(ContactModel.fromJson(user));
           } catch (e) {
             developer.log('Failed to parse user from iOwe: $e');
@@ -236,7 +248,9 @@ class ContactService {
       final response = await _api.get('/users/search?phone=$normalized');
       
       if (response.data['data'] != null) {
-        return ContactModel.fromJson(response.data['data']);
+        final user = response.data['data'] as Map<String, dynamic>;
+        _logResponseUser('users.search', user);
+        return ContactModel.fromJson(user);
       }
       return null;
     } catch (e) {
@@ -285,15 +299,22 @@ class ContactService {
           ? (result['registeredUsers'] as List? ?? const [])
           : (result as List? ?? const []);
       developer.log('Matched ${matchedUsers.length} users');
-      return matchedUsers.map((json) {
+      final models = <ContactModel>[];
+      for (var i = 0; i < matchedUsers.length; i++) {
+        final json = matchedUsers[i];
+        if (json is! Map<String, dynamic>) continue;
+        _logResponseUser('contacts.match', json, index: i);
         final model = ContactModel.fromJson(json);
         model.phoneNumber = _canonicalPhone(model.phoneNumber ?? '');
         final fallbackName = sourceNameByPhone[_canonicalPhone(model.phoneNumber ?? '')];
         if (_looksLikePhoneName(model.name) && fallbackName != null && fallbackName.isNotEmpty) {
           model.name = fallbackName;
         }
-        return model;
-      }).toList();
+        if (model.phoneNumber?.isNotEmpty ?? false) {
+          models.add(model);
+        }
+      }
+      return models;
     } catch (e) {
       if (_isNetworkIssue(e)) {
         _setLookupBackoff();

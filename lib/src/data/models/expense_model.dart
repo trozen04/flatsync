@@ -94,8 +94,8 @@ class ExpenseModel {
     final createdBy = json['createdBy'];
     final paidBy = (json['paidBy'] as String?) ??
         (createdBy is Map<String, dynamic>
-            ? ((createdBy['phoneNumber'] as String?) ??
-                (createdBy['_id'] as String?) ??
+            ? ((createdBy['_id'] as String?) ??
+                (createdBy['phoneNumber'] as String?) ??
                 (createdBy['name'] as String?))
             : (createdBy as String?)) ??
         '';

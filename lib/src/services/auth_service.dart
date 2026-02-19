@@ -1,9 +1,16 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:crypto/crypto.dart';
+import 'package:dio/dio.dart';
 import 'dart:convert';
 import '../data/models/user_model.dart';
 import '../core/constants/api_config.dart';
 import 'api_service.dart';
+
+enum AuthFlow {
+  login,
+  sendSignupOtp,
+  verifySignupOtp,
+}
 
 class AuthService {
   final ApiService _api;
@@ -21,6 +28,69 @@ class AuthService {
     if (digits.length == 12 && digits.startsWith('91')) return '+$digits';
     if (phone.trim().startsWith('+')) return '+$digits';
     return '+$digits';
+  }
+
+  String _extractServerError(Object error) {
+    if (error is! DioException) return '';
+    final data = error.response?.data;
+    if (data is Map<String, dynamic>) {
+      final msg = (data['error'] ?? data['message'])?.toString().trim();
+      if (msg != null && msg.isNotEmpty) return msg;
+    }
+    return '';
+  }
+
+  String getAuthErrorMessage(Object error, {required AuthFlow flow}) {
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      final serverError = _extractServerError(error);
+      final lower = serverError.toLowerCase();
+
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.receiveTimeout) {
+        return 'Request timeout. Please try again.';
+      }
+
+      if (error.type == DioExceptionType.connectionError) {
+        return 'Unable to connect. Check internet or server.';
+      }
+
+      if (flow == AuthFlow.login && statusCode == 401) {
+        if (lower.contains('setup pending') ||
+            lower.contains('complete signup')) {
+          return 'User not registered. Please sign up first.';
+        }
+        return 'Invalid phone or PIN.';
+      }
+
+      if (flow == AuthFlow.sendSignupOtp) {
+        if (statusCode == 429) {
+          return 'Please wait 10 seconds before requesting another OTP.';
+        }
+        if (statusCode == 400 && lower.contains('already exists')) {
+          return 'Phone already registered. Please login.';
+        }
+      }
+
+      if (flow == AuthFlow.verifySignupOtp && statusCode == 400) {
+        if (lower.contains('invalid otp')) return 'Invalid OTP.';
+        if (lower.contains('expired')) return 'OTP expired. Request a new OTP.';
+        if (lower.contains('already exists')) {
+          return 'User already exists. Please login.';
+        }
+      }
+
+      if (serverError.isNotEmpty) return serverError;
+      return 'Oops! Something went wrong';
+    }
+
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('socketexception') || raw.contains('connection')) {
+      return 'Unable to connect. Check internet or server.';
+    }
+    if (raw.contains('timeout')) return 'Request timeout. Please try again.';
+    return 'Oops! Something went wrong';
   }
 
   Future<Map<String, dynamic>> sendSignupOtp(String phoneNumber) async {

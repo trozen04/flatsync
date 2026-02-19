@@ -69,16 +69,9 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
     } catch (e) {
       developer.log('OTP verify error: $e');
       if (mounted) {
-        String errorMsg = 'Oops! Something went wrong';
-        if (e.toString().contains('SocketException') || e.toString().contains('Connection') || e.toString().contains('DioException')) {
-          errorMsg = 'Cannot connect to server';
-        } else if (e.toString().contains('Invalid OTP')) {
-          errorMsg = 'Invalid OTP';
-        } else if (e.toString().contains('expired')) {
-          errorMsg = 'OTP expired';
-        } else if (e.toString().contains('timeout')) {
-          errorMsg = 'Request timeout';
-        }
+        final errorMsg = context
+            .read<AuthService>()
+            .getAuthErrorMessage(e, flow: AuthFlow.verifySignupOtp);
         CustomSnackBar.show(context, message: errorMsg, isError: true);
       }
     } finally {

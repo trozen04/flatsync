@@ -29,7 +29,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   List<ContactModel> _contacts = [];
   Map<String, double> _balances = {};
 
-  bool _initialLoading = true;
+  bool _refreshing = false;
   bool _syncing = false;
 
   StreamSubscription<int>? _updatesSub;
@@ -41,7 +41,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshData(initial: true);
+    unawaited(_refreshData(forceRefresh: false));
     _updatesSub = context.read<ExpenseService>().updates.listen((_) {
       if (mounted) _loadBalances(forceRefresh: true);
     });
@@ -73,14 +73,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return digits.length >= 7;
   }
 
-  Future<void> _refreshData({bool initial = false, bool forceRefresh = false}) async {
-    if (initial) {
-      setState(() => _initialLoading = true);
-    }
+  Future<void> _refreshData({bool forceRefresh = false}) async {
+    if (mounted) setState(() => _refreshing = true);
     await _loadLocalContacts();
     await _loadBalances(forceRefresh: forceRefresh);
     if (!mounted) return;
-    setState(() => _initialLoading = false);
+    setState(() => _refreshing = false);
   }
 
   Future<void> _loadLocalContacts() async {
@@ -311,41 +309,44 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_initialLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     if (_contacts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.contacts_outlined, size: 64, color: AppColors.textTertiary),
-            AppDimensions.h20(context),
-            Text(
-              'No contacts found',
-              style: AppTextStyles.headlineSmall(context),
+      return Column(
+        children: [
+          if (_syncing || _refreshing) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.contacts_outlined, size: 64, color: AppColors.textTertiary),
+                  AppDimensions.h20(context),
+                  Text(
+                    'No contacts found',
+                    style: AppTextStyles.headlineSmall(context),
+                  ),
+                  AppDimensions.h10(context),
+                  Text(
+                    'Sync your device contacts to start splitting',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyMedium(context),
+                  ),
+                  AppDimensions.h20(context),
+                  ElevatedButton.icon(
+                    onPressed: _openContactSelection,
+                    icon: const Icon(Icons.contacts),
+                    label: const Text('Select from Contacts'),
+                  ),
+                  AppDimensions.h10(context),
+                  OutlinedButton.icon(
+                    onPressed: _addManualContact,
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Add by Phone Number'),
+                  ),
+                ],
+              ),
             ),
-            AppDimensions.h10(context),
-            Text(
-              'Sync your device contacts to start splitting',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium(context),
-            ),
-            AppDimensions.h20(context),
-            ElevatedButton.icon(
-              onPressed: _openContactSelection,
-              icon: const Icon(Icons.contacts),
-              label: const Text('Select from Contacts'),
-            ),
-            AppDimensions.h10(context),
-            OutlinedButton.icon(
-              onPressed: _addManualContact,
-              icon: const Icon(Icons.person_add),
-              label: const Text('Add by Phone Number'),
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
@@ -353,7 +354,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
       body: Column(
         children: [
-          if (_syncing) const LinearProgressIndicator(minHeight: 2),
+          if (_syncing || _refreshing) const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _refreshData(forceRefresh: true),
