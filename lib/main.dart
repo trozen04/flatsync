@@ -24,6 +24,9 @@ Future<void> main() async {
   final contactService = ContactService(apiService);
   final expenseService = ExpenseService(apiService, isarService);
 
+  // Silent server wake-up
+  apiService.wakeUpServer();
+
   runApp(
     MultiProvider(
       providers: [

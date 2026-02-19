@@ -22,7 +22,7 @@ class ConversationScreen extends StatefulWidget {
 
 class _ConversationScreenState extends State<ConversationScreen> {
   List<dynamic> _transactions = [];
-  bool _refreshing = false;
+  bool _syncing = false;
   bool _loadingMore = false;
   bool _hasMore = true;
   int _currentPage = 1;
@@ -36,12 +36,104 @@ class _ConversationScreenState extends State<ConversationScreen> {
   @override
   void initState() {
     super.initState();
-    unawaited(_loadConversation(forceRefresh: false));
     _loadCurrentUserId();
     _scrollController.addListener(_onScroll);
     _updatesSub = context.read<ExpenseService>().updates.listen((_) {
-      if (mounted) _loadConversation(forceRefresh: true);
+      if (mounted) _syncFromServer();
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLocalFirst());
+  }
+
+  Future<void> _loadLocalFirst() async {
+    developer.log('🔵 _loadLocalFirst: START');
+    if (mounted) setState(() => _syncing = true);
+    
+    try {
+      final contactId = widget.contact.contactId;
+      final expenseService = context.read<ExpenseService>();
+      List<dynamic> localData;
+      
+      if (contactId != null && contactId.isNotEmpty) {
+        developer.log('🔵 _loadLocalFirst: Loading by contactId=$contactId');
+        localData = await expenseService.getConversation(contactId, forceRefresh: false, page: 1);
+      } else {
+        developer.log('🔵 _loadLocalFirst: Loading by phone=${widget.contact.phoneNumber}');
+        localData = await expenseService.getConversationByPhone(widget.contact.phoneNumber ?? '', forceRefresh: false);
+      }
+      
+      developer.log('🔵 _loadLocalFirst: Got ${localData.length} local items');
+      
+      final balances = await expenseService.getBalances(forceRefresh: false);
+      final balance = _resolveContactBalance(balances);
+      
+      developer.log('🔵 _loadLocalFirst: Balance=$balance');
+      
+      if (mounted) {
+        setState(() {
+          _transactions = localData;
+          _balance = balance;
+          _hasMore = localData.length >= 20;
+          _syncing = false;
+        });
+        developer.log('🔵 _loadLocalFirst: State updated, _syncing=false');
+      }
+    } catch (e) {
+      developer.log('🔴 _loadLocalFirst ERROR: $e');
+      if (mounted) setState(() => _syncing = false);
+    }
+    
+    developer.log('🔵 _loadLocalFirst: Calling _syncFromServer');
+    _syncFromServer();
+  }
+
+  Future<void> _syncFromServer() async {
+    developer.log('🟢 _syncFromServer: START, _syncing=$_syncing');
+    if (_syncing) {
+      developer.log('🟡 _syncFromServer: Already syncing, RETURN');
+      return;
+    }
+    if (mounted) {
+      setState(() => _syncing = true);
+      developer.log('🟢 _syncFromServer: Set _syncing=true');
+    }
+    
+    try {
+      final contactId = widget.contact.contactId;
+      final expenseService = context.read<ExpenseService>();
+      List<dynamic> serverData;
+      
+      if (contactId != null && contactId.isNotEmpty) {
+        developer.log('🟢 _syncFromServer: Fetching by contactId=$contactId');
+        serverData = await expenseService.getConversation(contactId, forceRefresh: true, page: 1);
+      } else {
+        developer.log('🟢 _syncFromServer: Fetching by phone=${widget.contact.phoneNumber}');
+        serverData = await expenseService.getConversationByPhone(widget.contact.phoneNumber ?? '', forceRefresh: true);
+      }
+      
+      developer.log('🟢 _syncFromServer: Got ${serverData.length} server items');
+      
+      final balances = await expenseService.getBalances(forceRefresh: true);
+      final balance = _resolveContactBalance(balances);
+      
+      developer.log('🟢 _syncFromServer: Balance=$balance');
+      
+      if (mounted) {
+        setState(() {
+          _transactions = serverData;
+          _balance = balance;
+          _currentPage = 1;
+          _hasMore = serverData.length >= 20;
+        });
+        developer.log('🟢 _syncFromServer: State updated');
+      }
+    } catch (e) {
+      developer.log('🔴 _syncFromServer ERROR: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _syncing = false);
+        developer.log('🟢 _syncFromServer: Set _syncing=false, DONE');
+      }
+    }
   }
 
   Future<void> _loadCurrentUserId() async {
@@ -59,7 +151,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels <= _scrollController.position.minScrollExtent + 200) {
       if (!_loadingMore && _hasMore) {
         _loadMore();
       }
@@ -182,7 +274,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final input = await _showEntryDialog(isTransaction: false);
     if (input == null) return;
 
-    setState(() => _refreshing = true);
+    setState(() => _syncing = true);
     try {
       final amount = ((input['amount'] as double) * 100).toInt();
       final description = (input['description'] as String?)?.trim();
@@ -191,7 +283,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
             totalAmount: amount,
             participants: [phone],
           );
-      await _loadConversation(forceRefresh: true);
+      await _syncFromServer();
     } catch (e) {
       developer.log('Add chat expense error: $e');
       if (mounted) {
@@ -200,7 +292,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _refreshing = false);
+      if (mounted) setState(() => _syncing = false);
     }
   }
 
@@ -216,14 +308,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final input = await _showEntryDialog(isTransaction: true);
     if (input == null) return;
 
-    setState(() => _refreshing = true);
+    setState(() => _syncing = true);
     try {
       final amount = ((input['amount'] as double) * 100).toInt();
       await context.read<ExpenseService>().createTransaction(
             toUserId: toUserId,
             amount: amount,
           );
-      await _loadConversation(forceRefresh: true);
+      await _syncFromServer();
     } catch (e) {
       developer.log('Add chat transaction error: $e');
       if (mounted) {
@@ -232,53 +324,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _refreshing = false);
+      if (mounted) setState(() => _syncing = false);
     }
   }
 
-  Future<void> _loadConversation({bool forceRefresh = false}) async {
-    setState(() => _refreshing = true);
 
-    try {
-      final contactId = widget.contact.contactId;
-      final expenseService = context.read<ExpenseService>();
-      List<dynamic> conversation;
-      if (contactId != null && contactId.isNotEmpty) {
-        try {
-          conversation = await expenseService.getConversation(
-            contactId,
-            forceRefresh: forceRefresh,
-            page: 1,
-          );
-        } catch (_) {
-          // Fallback to local expense-derived timeline if network/API conversation fetch fails.
-          conversation = await expenseService.getConversationByPhone(
-            widget.contact.phoneNumber ?? '',
-            forceRefresh: false,
-          );
-        }
-      } else {
-        conversation = await expenseService.getConversationByPhone(
-          widget.contact.phoneNumber ?? '',
-          forceRefresh: forceRefresh,
-        );
-      }
-
-      final balances = await expenseService.getBalances(forceRefresh: forceRefresh);
-      final balance = _resolveContactBalance(balances);
-
-      if (mounted) setState(() {
-        _transactions = conversation;
-        _balance = balance;
-        _currentPage = 1;
-        _hasMore = conversation.length >= 20;
-      });
-    } catch (e) {
-      developer.log('Load conversation error: $e');
-    } finally {
-      if (mounted) setState(() => _refreshing = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -300,7 +350,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
       ),
       body: Column(
         children: [
-          if (_refreshing) const LinearProgressIndicator(minHeight: 2),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -322,11 +371,66 @@ class _ConversationScreenState extends State<ConversationScreen> {
               ],
             ),
           ),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: _syncing ? 36 : 0,
+            child: _syncing
+                ? Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1565C0),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF1565C0).withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Syncing data...',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
           Expanded(
-            child: _transactions.isEmpty
+            child: _transactions.isEmpty && _syncing
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text('Loading conversation...', style: AppTextStyles.bodyMedium(context)),
+                      ],
+                    ),
+                  )
+                : _transactions.isEmpty
                 ? RefreshIndicator(
-                    onRefresh: () => _loadConversation(forceRefresh: true),
+                    onRefresh: _syncFromServer,
                     child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       children: [
                         SizedBox(height: AppDimensions.height(context) * 0.2),
                         Center(
@@ -335,22 +439,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       ],
                     ),
                   )
-                : RefreshIndicator(
-                    onRefresh: () => _loadConversation(forceRefresh: true),
+                : Stack(
+                children: [
+                  RefreshIndicator(
+                    onRefresh: _syncFromServer,
                     child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       controller: _scrollController,
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.fromLTRB(16, _loadingMore ? 56 : 16, 16, 16),
                       reverse: true,
-                      itemCount: _transactions.length + (_loadingMore ? 1 : 0),
+                      itemCount: _transactions.length,
                       itemBuilder: (context, index) {
-                            if (index == _transactions.length) {
-                              return const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: CircularProgressIndicator(),
-                                ),
-                              );
-                            }
                             final item = _transactions[index];
                             final type = item['type'];
                             final amount = (item['amount'] as num).toDouble();
@@ -395,7 +494,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           const SnackBar(content: Text('Expense deleted')),
                                         );
-                                        await _loadConversation(forceRefresh: true);
+                                        await _syncFromServer();
                                       }
                                     } catch (e) {
                                       if (mounted) {
@@ -496,9 +595,45 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               ),
                             ),
                           );
-                      },
+                          },
+                        ),
+                      ),
+                if (_loadingMore)
+                  Positioned(
+                    bottom: 8,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.12),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('Loading older...'),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
+              ],
+            ),
           ),
           SafeArea(
             top: false,
@@ -508,7 +643,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _refreshing ? null : _addExpenseFromChat,
+                      onPressed: _syncing ? null : _addExpenseFromChat,
                       icon: const Icon(Icons.receipt_long),
                       label: const Text('Add Expense'),
                     ),
@@ -516,7 +651,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _refreshing ? null : _addTransactionFromChat,
+                      onPressed: _syncing ? null : _addTransactionFromChat,
                       icon: const Icon(Icons.payments),
                       label: const Text('Add Transaction'),
                     ),

@@ -1,7 +1,9 @@
 class ApiConfig {
-  // For mobile device: Use your computer's IP address
-  // Find IP: Windows (ipconfig) | Mac/Linux (ifconfig)
-  static const String baseUrl = 'http://192.168.1.48:5000/api'; // Change to your IP
+  // Production URL
+ // static const String baseUrl = 'https://flatsync-backend.onrender.com/api';
+  
+  // For local development: Use your computer's IP address
+   static const String baseUrl = 'http://192.168.1.48:5000/api';
   
   // For emulator: Use 10.0.2.2
   // static const String baseUrl = 'http://10.0.2.2:5000/api';
