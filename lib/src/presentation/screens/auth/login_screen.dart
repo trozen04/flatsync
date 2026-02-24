@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/custom_button.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/expense_service.dart';
 import '../../../services/contact_service.dart';
@@ -31,8 +32,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final contactService = context.read<ContactService>();
     final balances = await expenseService.getBalances(forceRefresh: true);
     if (balances.isNotEmpty) {
-      await contactService.autoSyncFromBalances(balances, isar);
-      contactService.notifyUpdate();
+      final contacts = expenseService.getCachedBalanceContacts();
+      if (contacts.isNotEmpty) {
+        await contactService.upsertContactsByCanonical(isar, contacts);
+        contactService.notifyUpdate();
+      }
     }
     await expenseService.getExpenses(forceRefresh: true);
   }
@@ -120,25 +124,20 @@ class _LoginScreenState extends State<LoginScreen> {
               AppDimensions.h30(context),
               SizedBox(
                 width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _login,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text('Login', style: AppTextStyles.titleMedium(context).copyWith(color: Colors.white)),
+                child: CustomButton(
+                  text: 'Login',
+                  onPressed: _login,
+                  isLoading: _loading,
                 ),
               ),
               AppDimensions.h20(context),
-              TextButton(
+              CustomButton(
+                text: 'New user? Sign Up',
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const SignupScreen()),
                 ),
-                child: const Text('New user? Sign Up'),
+                isOutlined: true,
               ),
             ],
           ),

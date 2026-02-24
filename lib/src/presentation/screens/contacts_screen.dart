@@ -9,7 +9,8 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
-import '../../core/widgets/app_container.dart';
+import '../../core/theme/app_shadows.dart';
+import '../../core/widgets/custom_button.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../services/contact_service.dart';
@@ -27,10 +28,12 @@ class ContactsScreen extends StatefulWidget {
 
 class _ContactsScreenState extends State<ContactsScreen> {
   List<ContactModel> _contacts = [];
-  Map<String, double> _balances = {};
+  Map<String, int> _balances = {};
 
   bool _refreshing = false;
   bool _syncing = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
 
   StreamSubscription<int>? _updatesSub;
   StreamSubscription<int>? _contactUpdatesSub;
@@ -49,13 +52,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _contactUpdatesSub = context.read<ContactService>().updates.listen((_) {
       if (mounted) {
         _loadLocalContacts();
-        _loadBalances(forceRefresh: true);
       }
     });
   }
 
   @override
   void dispose() {
+    _searchController.dispose();
     _updatesSub?.cancel();
     _contactUpdatesSub?.cancel();
     super.dispose();
@@ -141,9 +144,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       final expenseService = context.read<ExpenseService>();
       final raw = await expenseService.getBalances(forceRefresh: forceRefresh);
-      final normalized = <String, double>{};
+      final normalized = <String, int>{};
       raw.forEach((k, v) {
-        normalized[k.toString()] = (v as num).toDouble();
+        normalized[k.toString()] = (v as num).round();
       });
       if (!mounted) return;
       setState(() => _balances = normalized);
@@ -152,7 +155,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  double _balanceForContact(ContactModel c) {
+  int _balanceForContact(ContactModel c) {
     final byId = c.contactId != null ? _balances[c.contactId!] : null;
     if (byId != null) return byId;
 
@@ -163,14 +166,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return 0;
   }
 
-  String _balanceText(double amount) {
+  String _balanceText(int amount) {
     final rupees = amount.abs() / _currencyDivisor;
     if (amount > 0) return 'Owes you Rs ${rupees.toStringAsFixed(2)}';
     if (amount < 0) return 'You owe Rs ${rupees.toStringAsFixed(2)}';
     return 'Settled';
   }
 
-  Color _balanceColor(double amount) {
+  Color _balanceColor(int amount) {
     if (amount > 0) return AppColors.success;
     if (amount < 0) return AppColors.error;
     return AppColors.textSecondary;
@@ -254,13 +257,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ElevatedButton(
+            CustomButton(
+              text: 'Cancel',
+              onPressed: () => Navigator.pop(context),
+              isOutlined: true,
+            ),
+            CustomButton(
+              text: 'Add',
               onPressed: () {
                 if (nameController.text.isEmpty || phoneNumber.isEmpty) return;
                 Navigator.pop(context, {'name': nameController.text, 'phone': phoneNumber});
               },
-              child: const Text('Add'),
             ),
           ],
         ),
@@ -331,16 +338,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     style: AppTextStyles.bodyMedium(context),
                   ),
                   AppDimensions.h20(context),
-                  ElevatedButton.icon(
+                  CustomButton(
+                    text: 'Select from Contacts',
+                    icon: Icons.contacts,
                     onPressed: _openContactSelection,
-                    icon: const Icon(Icons.contacts),
-                    label: const Text('Select from Contacts'),
                   ),
                   AppDimensions.h10(context),
-                  OutlinedButton.icon(
+                  CustomButton(
+                    text: 'Add by Phone Number',
+                    icon: Icons.person_add,
                     onPressed: _addManualContact,
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('Add by Phone Number'),
+                    isOutlined: true,
                   ),
                 ],
               ),
@@ -350,68 +358,109 @@ class _ContactsScreenState extends State<ContactsScreen> {
       );
     }
 
+    final filtered = _query.trim().isEmpty
+        ? _contacts
+        : _contacts.where((c) {
+            final q = _query.trim().toLowerCase();
+            final name = (c.name ?? '').toLowerCase();
+            final phone = (c.phoneNumber ?? '').toLowerCase();
+            return name.contains(q) || phone.contains(q);
+          }).toList();
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
       body: Column(
         children: [
           if (_syncing || _refreshing) const LinearProgressIndicator(minHeight: 2),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search contacts',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                        icon: const Icon(Icons.close),
+                      ),
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _refreshData(forceRefresh: true),
               child: ListView.builder(
                 padding: AppDimensions.containerMargin(context),
-                itemCount: _contacts.length,
+                itemCount: filtered.length,
                 itemBuilder: (context, index) {
-                  final contact = _contacts[index];
+                  final contact = filtered[index];
                   final balance = _balanceForContact(contact);
 
-                  return AppContainer(
-                    margin: EdgeInsets.only(bottom: AppDimensions.height(context) * 0.012),
-                    radius: 18,
-                    border: Border.all(color: Colors.transparent, width: 0),
-                    shadows: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
-                      ),
-                      BoxShadow(
-                        color: AppColors.primary.withOpacity(0.04),
-                        blurRadius: 18,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      leading: CircleAvatar(
-                        radius: 24,
-                        backgroundColor: _balanceColor(balance).withOpacity(0.14),
-                        child: Text(
-                          (contact.name ?? 'U')[0].toUpperCase(),
-                          style: TextStyle(
-                            color: _balanceColor(balance),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                      title: Text(
-                        contact.name ?? 'Unknown',
-                        style: AppTextStyles.titleMedium(context),
-                      ),
-                      subtitle: Text(
-                        _balanceText(balance),
-                        style: AppTextStyles.labelLarge(context).copyWith(
-                          color: _balanceColor(balance),
-                        ),
-                      ),
-                      trailing: Icon(Icons.chevron_right, color: AppColors.textTertiary.withOpacity(0.7)),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                      boxShadow: AppShadows.card,
+                    ),
+                    child: InkWell(
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (_) => ConversationScreen(contact: contact)),
                         );
                       },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: _balanceColor(balance).withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                (contact.name ?? 'U')[0].toUpperCase(),
+                                style: TextStyle(
+                                  color: _balanceColor(balance),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  contact.name ?? 'Unknown',
+                                  style: AppTextStyles.titleMedium(context).copyWith(fontSize: 15),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _balanceText(balance),
+                                  style: AppTextStyles.labelLarge(context).copyWith(
+                                    color: _balanceColor(balance),
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 20),
+                        ],
+                      ),
                     ),
                   );
                 },

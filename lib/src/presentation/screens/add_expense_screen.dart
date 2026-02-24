@@ -9,13 +9,14 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
-import '../../core/widgets/app_button.dart';
-import '../../core/widgets/app_container.dart';
+import '../../core/theme/app_shadows.dart';
+import '../../core/widgets/custom_button.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/money_utils.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   const AddExpenseScreen({super.key});
@@ -36,6 +37,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   bool _submitting = false;
   StreamSubscription<int>? _expenseUpdatesSub;
   StreamSubscription<int>? _contactUpdatesSub;
+  DateTime? _lastBalanceContactSyncAt;
 
   @override
   void initState() {
@@ -44,9 +46,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (mounted) {
         _loadLocalContacts();
         _loadRecentAmounts();
-        _syncContactsFromBalances(forceRefresh: true);
+        _syncContactsFromBalances(forceRefresh: false);
         _expenseUpdatesSub = context.read<ExpenseService>().updates.listen((_) {
-          if (mounted) _syncContactsFromBalances(forceRefresh: true);
+          // Avoid creating a balances->contacts->balances feedback loop and extra network hits.
+          if (mounted) _syncContactsFromBalances(forceRefresh: false);
         });
         _contactUpdatesSub = context.read<ContactService>().updates.listen((_) {
           if (mounted) _loadLocalContacts();
@@ -62,6 +65,35 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     _expenseUpdatesSub?.cancel();
     _contactUpdatesSub?.cancel();
     super.dispose();
+  }
+
+  ContactModel? _contactByPhone(String phone) {
+    for (final c in _contacts) {
+      if ((c.phoneNumber ?? '') == phone) return c;
+    }
+    return null;
+  }
+
+  Future<void> _openParticipantPicker() async {
+    final picked = await showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (ctx) {
+        return _ParticipantPickerSheet(
+          contacts: _contacts,
+          initiallySelected: _selectedParticipants,
+        );
+      },
+    );
+
+    if (!mounted || picked == null) return;
+    setState(() {
+      _selectedParticipants
+        ..clear()
+        ..addAll(picked);
+    });
   }
 
   Future<void> _loadLocalContacts({bool showLoader = true}) async {
@@ -85,13 +117,24 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   Future<void> _syncContactsFromBalances({bool forceRefresh = false}) async {
+    final now = DateTime.now();
+    if (_lastBalanceContactSyncAt != null &&
+        now.difference(_lastBalanceContactSyncAt!) < const Duration(seconds: 30)) {
+      return;
+    }
+    _lastBalanceContactSyncAt = now;
+
     try {
       final expenseService = context.read<ExpenseService>();
       final contactService = context.read<ContactService>();
       final isar = context.read<IsarService>();
       final balances = await expenseService.getBalances(forceRefresh: forceRefresh);
       if (balances.isNotEmpty) {
-        await contactService.autoSyncFromBalances(balances, isar);
+        final contacts = expenseService.getCachedBalanceContacts();
+        if (contacts.isNotEmpty) {
+          await contactService.upsertContactsByCanonical(isar, contacts);
+          contactService.notifyUpdate();
+        }
       }
       await _loadLocalContacts(showLoader: false);
     } catch (e) {
@@ -109,8 +152,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   Future<void> _addExpense() async {
-    if (_descController.text.trim().isEmpty || _amountController.text.trim().isEmpty) {
-      CustomSnackBar.show(context, message: 'Fill all fields', isError: true);
+    if (_amountController.text.trim().isEmpty) {
+      CustomSnackBar.show(context, message: 'Enter an amount', isError: true);
       return;
     }
 
@@ -119,8 +162,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return;
     }
 
-    final amountValue = double.tryParse(_amountController.text.trim());
-    if (amountValue == null || amountValue <= 0) {
+    final amountPaise = parseRupeesToPaise(_amountController.text);
+    if (amountPaise == null) {
       CustomSnackBar.show(context, message: 'Enter a valid amount', isError: true);
       return;
     }
@@ -128,9 +171,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     setState(() => _submitting = true);
 
     try {
+      final desc = _descController.text.trim();
       await context.read<ExpenseService>().createExpense(
-            description: _descController.text.trim(),
-            totalAmount: (amountValue * 100).toInt(),
+            description: desc.isEmpty ? 'Expense' : desc,
+            totalAmount: amountPaise,
             participants: List<String>.from(_selectedParticipants),
           );
 
@@ -154,7 +198,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final totalAmount = double.tryParse(_amountController.text.trim()) ?? 0;
+    final totalPaise = parseRupeesToPaise(_amountController.text) ?? 0;
+    final totalAmount = totalPaise / 100.0;
     final perPerson =
         _selectedParticipants.isEmpty ? 0 : totalAmount / (_selectedParticipants.length + 1);
 
@@ -185,15 +230,15 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             ),
             AppDimensions.h20(context),
             Center(
-              child: ElevatedButton.icon(
+              child: CustomButton(
+                text: 'Import Contacts',
+                icon: Icons.person_add,
                 onPressed: () async {
                   final result = await Navigator.pushNamed(context, '/contact-selection');
                   if (result != null) {
                     await _loadLocalContacts();
                   }
                 },
-                icon: const Icon(Icons.person_add),
-                label: const Text('Import Contacts'),
               ),
             ),
           ],
@@ -208,7 +253,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              if (_submitting) const LinearProgressIndicator(minHeight: 2),
+             // if (_submitting) const LinearProgressIndicator(minHeight: 2),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: _loadLocalContacts,
@@ -237,26 +282,31 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         ),
                         if (_recentAmountsPaise.isNotEmpty) ...[
                           AppDimensions.h10(context),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: _recentAmountsPaise.map((paise) {
-                              final rupees = paise / 100;
-                              return ActionChip(
-                                label: Text('Rs ${rupees.toStringAsFixed(2)}'),
-                                onPressed: () {
-                                  _amountController.text = rupees.toStringAsFixed(2);
-                                  setState(() {});
-                                },
-                              );
-                            }).toList(),
+                          SizedBox(
+                            height: 36,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _recentAmountsPaise.length > 4 ? 4 : _recentAmountsPaise.length,
+                              separatorBuilder: (_, __) => const SizedBox(width: 8),
+                              itemBuilder: (context, index) {
+                                final paise = _recentAmountsPaise[index];
+                                final rupees = paise / 100;
+                                return ActionChip(
+                                  label: Text('Rs ${rupees.toStringAsFixed(2)}'),
+                                  onPressed: () {
+                                    _amountController.text = rupees.toStringAsFixed(2);
+                                    setState(() {});
+                                  },
+                                );
+                              },
+                            ),
                           ),
                         ],
                         AppDimensions.h20(context),
                         TextField(
                           controller: _descController,
                           decoration: InputDecoration(
-                            labelText: 'Description',
+                            labelText: 'Description (Optional)',
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                             filled: true,
                             fillColor: Theme.of(context).colorScheme.surface,
@@ -264,162 +314,73 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           maxLength: 50,
                         ),
                         AppDimensions.h20(context),
-                        if (totalAmount > 0 && _selectedParticipants.isNotEmpty)
-                          Container(
-                            padding: AppDimensions.containerPadding(context),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                                  Theme.of(context).colorScheme.primary.withOpacity(0.05),
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withOpacity(0.12),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text('Total:', style: AppTextStyles.labelLarge(context)),
-                                    Text(
-                                      'Rs ${totalAmount.toStringAsFixed(2)}',
-                                      style: AppTextStyles.currency(context),
-                                    ),
-                                  ],
-                                ),
-                                const Divider(height: 16),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      'Split ${_selectedParticipants.length + 1} ways',
-                                      style: AppTextStyles.bodySmall(context),
-                                    ),
-                                    Text(
-                                      'Rs ${perPerson.toStringAsFixed(2)}/person',
-                                      style: AppTextStyles.labelLarge(context).copyWith(color: AppColors.success),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        AppDimensions.h20(context),
-                        Text(
-                          'Select Participants',
-                          style: AppTextStyles.titleMedium(context),
-                        ),
-                        AppDimensions.h10(context),
-                        ..._contacts.map((contact) {
-                          final phone = contact.phoneNumber;
-                          final selected = phone != null && _selectedParticipants.contains(phone);
-                          return AppContainer(
-                            margin: EdgeInsets.only(bottom: AppDimensions.height(context) * 0.012),
-                            radius: 16,
+                        Container(
+                          padding: AppDimensions.containerPadding(context),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: selected
-                                  ? Theme.of(context).colorScheme.primary.withOpacity(0.28)
-                                  : Colors.transparent,
+                              color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.55),
                             ),
-                            shadows: [
-                              BoxShadow(
-                                color: selected
-                                    ? Theme.of(context).colorScheme.primary.withOpacity(0.16)
-                                    : Colors.black.withOpacity(0.05),
-                                blurRadius: selected ? 16 : 12,
-                                offset: const Offset(0, 5),
+                            boxShadow: AppShadows.card,
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('Total:', style: AppTextStyles.labelLarge(context)),
+                                  Text(
+                                    'Rs ${totalAmount.toStringAsFixed(2)}',
+                                    style: AppTextStyles.currency(context),
+                                  ),
+                                ],
+                              ),
+                              const Divider(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Split with ${_selectedParticipants.length} ${_selectedParticipants.length == 1 ? "person" : "people"}',
+                                    style: AppTextStyles.bodySmall(context),
+                                  ),
+                                  Text(
+                                    'Rs ${perPerson.toStringAsFixed(2)}/person',
+                                    style: AppTextStyles.labelLarge(context).copyWith(
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              AppDimensions.h10(context),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    ActionChip(
+                                      label: Text(_selectedParticipants.isEmpty ? 'Choose people' : 'Edit people'),
+                                      avatar: const Icon(Icons.group_add, size: 18),
+                                      onPressed: _openParticipantPicker,
+                                    ),
+                                    ..._selectedParticipants.take(6).map((phone) {
+                                      final c = _contactByPhone(phone);
+                                      final name = (c?.name ?? '').trim();
+                                      final label = name.isNotEmpty ? name : phone;
+                                      return InputChip(
+                                        label: Text(label, overflow: TextOverflow.ellipsis),
+                                        onDeleted: () => setState(() => _selectedParticipants.remove(phone)),
+                                      );
+                                    }),
+                                    if (_selectedParticipants.length > 6)
+                                      Chip(label: Text('+${_selectedParticipants.length - 6} more')),
+                                  ],
+                                ),
                               ),
                             ],
-                            color: selected
-                                ? Theme.of(context).colorScheme.primary.withOpacity(0.09)
-                                : Theme.of(context).colorScheme.surface,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(16),
-                              onTap: phone == null
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        if (selected) {
-                                          _selectedParticipants.remove(phone);
-                                        } else {
-                                          _selectedParticipants.add(phone);
-                                        }
-                                      });
-                                    },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 20,
-                                      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.14),
-                                      child: Text(
-                                        (contact.name?.isNotEmpty ?? false)
-                                            ? contact.name![0].toUpperCase()
-                                            : '?',
-                                        style: AppTextStyles.labelLarge(context).copyWith(
-                                          color: Theme.of(context).colorScheme.primary,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            contact.name ?? 'Unknown',
-                                            style: AppTextStyles.labelLarge(context),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            contact.phoneNumber ?? '',
-                                            style: AppTextStyles.bodySmall(context),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    AnimatedContainer(
-                                      duration: const Duration(milliseconds: 180),
-                                      width: 24,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        color: selected
-                                            ? Theme.of(context).colorScheme.primary
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(7),
-                                        border: Border.all(
-                                          color: selected
-                                              ? Theme.of(context).colorScheme.primary
-                                              : Theme.of(context).colorScheme.outlineVariant,
-                                          width: 1.6,
-                                        ),
-                                      ),
-                                      child: selected
-                                          ? const Icon(Icons.check, size: 16, color: Colors.white)
-                                          : null,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
+                          ),
+                        ),
                         AppDimensions.h50(context),
                       ],
                     ),
@@ -432,15 +393,203 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         floatingActionButton: Container(
           width: double.infinity,
           padding: EdgeInsets.symmetric(horizontal: AppDimensions.width(context) * 0.04),
-          child: AppButton(
+          child: CustomButton(
             text: 'Add Expense',
             onPressed: _addExpense,
             isLoading: _submitting,
-            fullWidth: true,
-            size: AppButtonSize.large,
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      ),
+    );
+  }
+}
+
+class _ParticipantPickerSheet extends StatefulWidget {
+  final List<ContactModel> contacts;
+  final List<String> initiallySelected;
+
+  const _ParticipantPickerSheet({
+    required this.contacts,
+    required this.initiallySelected,
+  });
+
+  @override
+  State<_ParticipantPickerSheet> createState() => _ParticipantPickerSheetState();
+}
+
+class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+  late final List<String> _selected = List<String>.from(widget.initiallySelected);
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+    final filtered = _query.trim().isEmpty
+        ? widget.contacts
+        : widget.contacts.where((c) {
+            final q = _query.trim().toLowerCase();
+            return (c.name ?? '').toLowerCase().contains(q) ||
+                (c.phoneNumber ?? '').toLowerCase().contains(q);
+          }).toList();
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsets),
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.86,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 44,
+              height: 5,
+              decoration: BoxDecoration(
+                color: scheme.outlineVariant,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Choose people',
+                      style: AppTextStyles.titleMedium(context),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, _selected),
+                    child: Text('Done (${_selected.length})'),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search participants',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                itemCount: filtered.length,
+                itemBuilder: (context, index) {
+                  final contact = filtered[index];
+                  final phone = contact.phoneNumber;
+                  final selected = phone != null && _selected.contains(phone);
+
+                  final bg = selected ? scheme.primaryContainer : scheme.surface;
+                  final fg = selected ? scheme.onPrimaryContainer : AppColors.textPrimary;
+                  final secondaryFg = selected ? scheme.onPrimaryContainer : AppColors.textSecondary;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: selected ? scheme.primary : scheme.outlineVariant),
+                      boxShadow: AppShadows.card,
+                    ),
+                    child: InkWell(
+                      onTap: phone == null
+                          ? null
+                          : () {
+                              setState(() {
+                                if (selected) {
+                                  _selected.remove(phone);
+                                } else {
+                                  _selected.add(phone);
+                                }
+                              });
+                            },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: selected ? scheme.primary : scheme.primaryContainer,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                (contact.name?.isNotEmpty ?? false) ? contact.name![0].toUpperCase() : '?',
+                                style: TextStyle(
+                                  color: selected ? scheme.onPrimary : scheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  contact.name ?? 'Unknown',
+                                  style: AppTextStyles.titleMedium(context).copyWith(fontSize: 15, color: fg),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  contact.phoneNumber ?? '',
+                                  style: AppTextStyles.bodySmall(context).copyWith(fontSize: 12, color: secondaryFg),
+                                ),
+                              ],
+                            ),
+                          ),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 160),
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: selected ? scheme.primary : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: selected ? scheme.primary : scheme.outlineVariant,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: selected ? Icon(Icons.check, size: 16, color: scheme.onPrimary) : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/api_config.dart';
 import '../data/models/expense_model.dart';
 import '../data/models/transaction_model.dart';
+import '../data/models/contact_model.dart';
 import '../data/repositories/isar_service.dart';
 import 'api_service.dart';
 
@@ -34,8 +35,13 @@ class ExpenseService {
   Map<String, dynamic>? _balancesCache;
   DateTime? _balancesCacheAt;
 
+  List<ContactModel>? _balanceContactsCache;
+  DateTime? _balanceContactsCacheAt;
+
   final Map<String, List<dynamic>> _conversationCache = {};
   final Map<String, DateTime> _conversationCacheAt = {};
+  final Map<String, List<Map<String, dynamic>>> _timelineCache = {};
+  final Map<String, DateTime> _timelineCacheAt = {};
 
   SharedPreferences? _prefs;
 
@@ -84,8 +90,17 @@ class ExpenseService {
     _transactionsCacheAt = null;
     _balancesCache = null;
     _balancesCacheAt = null;
+    _balanceContactsCache = null;
+    _balanceContactsCacheAt = null;
     _conversationCache.clear();
     _conversationCacheAt.clear();
+    _timelineCache.clear();
+    _timelineCacheAt.clear();
+  }
+
+  List<ContactModel> getCachedBalanceContacts() {
+    if (_balanceContactsCache == null) return const [];
+    return List<ContactModel>.unmodifiable(_balanceContactsCache!);
   }
 
   Future<void> _persistBalances(Map<String, dynamic> balances) async {
@@ -105,10 +120,11 @@ class ExpenseService {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return {};
 
-      final normalized = <String, double>{};
+      final normalized = <String, int>{};
       decoded.forEach((key, value) {
-        normalized[key.toString()] = (value as num?)?.toDouble() ?? 0;
+        normalized[key.toString()] = (value as num?)?.round() ?? 0;
       });
+      normalized.removeWhere((_, v) => v == 0);
       return normalized;
     } catch (e) {
       developer.log('Read balances cache error: $e');
@@ -348,14 +364,8 @@ class ExpenseService {
       return _balancesCache!;
     }
 
-    if (!forceRefresh) {
-      final local = await _readPersistedBalances();
-      if (local.isNotEmpty) {
-        _balancesCache = local;
-        _balancesCacheAt = DateTime.now();
-        return local;
-      }
-    }
+    // Prefer server truth; keep persisted balances only as an offline fallback.
+    final localFallback = (!forceRefresh) ? await _readPersistedBalances() : <String, dynamic>{};
 
     try {
       final response = await _api.get(ApiConfig.balances);
@@ -363,7 +373,8 @@ class ExpenseService {
 
       if (data is Map<String, dynamic>) {
         if (data['owesMe'] is List || data['iOwe'] is List) {
-          final normalized = <String, double>{};
+          final normalized = <String, int>{};
+          final contacts = <ContactModel>[];
 
           final owesMe = (data['owesMe'] as List?) ?? const [];
           for (var i = 0; i < owesMe.length; i++) {
@@ -373,9 +384,12 @@ class ExpenseService {
             final amount = (item['amount'] as num?) ?? 0;
             if (user is Map<String, dynamic>) {
               _logBalanceUser('balances.owesMe', user, amount, index: i);
+              try {
+                contacts.add(ContactModel.fromJson(user));
+              } catch (_) {}
               final key = (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
               if (key != null && key.isNotEmpty) {
-                normalized[key] = (normalized[key] ?? 0) + amount.toDouble();
+                normalized[key] = (normalized[key] ?? 0) + amount.round();
               }
             }
           }
@@ -388,16 +402,25 @@ class ExpenseService {
             final amount = (item['amount'] as num?) ?? 0;
             if (user is Map<String, dynamic>) {
               _logBalanceUser('balances.iOwe', user, amount, index: i);
+              try {
+                contacts.add(ContactModel.fromJson(user));
+              } catch (_) {}
               final key = (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
               if (key != null && key.isNotEmpty) {
-                normalized[key] = (normalized[key] ?? 0) - amount.toDouble();
+                normalized[key] = (normalized[key] ?? 0) - amount.round();
               }
             }
           }
 
+          normalized.removeWhere((_, v) => v == 0);
           _balancesCache = normalized;
           _balancesCacheAt = DateTime.now();
           unawaited(_persistBalances(normalized));
+
+          // Cache enriched contacts extracted from the same response so callers can sync without an extra API hit.
+          _balanceContactsCache = contacts;
+          _balanceContactsCacheAt = DateTime.now();
+
           return normalized;
         }
 
@@ -409,15 +432,15 @@ class ExpenseService {
 
       _balancesCache = {};
       _balancesCacheAt = DateTime.now();
+      unawaited(_persistBalances({}));
       return {};
     } catch (e) {
       if (_balancesCache != null) return _balancesCache!;
 
-      final local = await _readPersistedBalances();
-      if (local.isNotEmpty) {
-        _balancesCache = local;
+      if (localFallback.isNotEmpty) {
+        _balancesCache = localFallback;
         _balancesCacheAt = DateTime.now();
-        return local;
+        return localFallback;
       }
       rethrow;
     }
@@ -428,6 +451,8 @@ class ExpenseService {
     required int page,
     required int limit,
   }) async {
+    final safePage = page < 1 ? 1 : page;
+    final safeLimit = limit < 1 ? 20 : limit;
     final currentUserId = await _currentUserId();
 
     final expenses = await getExpenses(forceRefresh: false);
@@ -442,9 +467,7 @@ class ExpenseService {
 
       final youPaid = !paidByMatch;
       final splitCount = expense.participants.length + 1;
-      final amount = splitCount > 0
-          ? (expense.amount / splitCount).toDouble()
-          : expense.amount.toDouble();
+      final amount = splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
 
       timeline.add({
         'type': 'expense',
@@ -462,11 +485,11 @@ class ExpenseService {
 
       final sentByMe = currentUserId != null && tx.fromUserId == currentUserId;
       final direction = sentByMe ? 'sent' : 'received';
-      final signedAmount = sentByMe ? tx.amount.toDouble() : -tx.amount.toDouble();
+      final signedAmount = sentByMe ? tx.amount : -tx.amount;
 
       timeline.add({
         'type': 'transaction',
-        'amount': tx.amount.toDouble(),
+        'amount': tx.amount,
         'signedAmount': signedAmount,
         'direction': direction,
         'description': sentByMe ? 'Sent payment' : 'Received payment',
@@ -479,9 +502,9 @@ class ExpenseService {
           .compareTo(DateTime.parse(a['createdAt'] as String)),
     );
 
-    final start = (page - 1) * limit;
+    final start = (safePage - 1) * safeLimit;
     if (start >= timeline.length) return [];
-    final end = (start + limit) > timeline.length ? timeline.length : (start + limit);
+    final end = (start + safeLimit) > timeline.length ? timeline.length : (start + safeLimit);
     return timeline.sublist(start, end);
   }
 
@@ -491,7 +514,9 @@ class ExpenseService {
     int page = 1,
     int limit = 20,
   }) async {
-    final cacheKey = 'id:$userId:p$page';
+    final safePage = page < 1 ? 1 : page;
+    final safeLimit = limit < 1 ? 20 : limit;
+    final cacheKey = 'id:$userId:p$safePage:l$safeLimit';
     if (!forceRefresh &&
         _conversationCache.containsKey(cacheKey) &&
         _isFresh(_conversationCacheAt[cacheKey])) {
@@ -499,10 +524,12 @@ class ExpenseService {
     }
 
     try {
-      final response = await _api.get('${ApiConfig.conversations}/$userId?page=$page&limit=$limit');
+      final response = await _api.get(
+        '${ApiConfig.conversations}/$userId?page=$safePage&limit=$safeLimit',
+      );
       final data = response.data['data'];
       if (data is! Map<String, dynamic>) {
-        final local = await _localConversationById(userId, page: page, limit: limit);
+        final local = await _localConversationById(userId, page: safePage, limit: safeLimit);
         _conversationCache[cacheKey] = local;
         _conversationCacheAt[cacheKey] = DateTime.now();
         return local;
@@ -521,10 +548,10 @@ class ExpenseService {
             DateTime.now().toUtc().toIso8601String();
 
         final amount = type == 'expense'
-            ? (item['amount'] as num?)?.toDouble() ??
-                (payload['totalAmount'] as num?)?.toDouble() ??
+            ? (item['amount'] as num?)?.round() ??
+                (payload['totalAmount'] as num?)?.round() ??
                 0
-            : (payload['amount'] as num?)?.toDouble() ?? 0;
+            : (payload['amount'] as num?)?.round() ?? 0;
 
         final otherId = userId;
         final expenseCreator = payload['createdBy'];
@@ -587,10 +614,67 @@ class ExpenseService {
       if (_conversationCache.containsKey(cacheKey)) {
         return _conversationCache[cacheKey]!;
       }
-      final local = await _localConversationById(userId, page: page, limit: limit);
+      final local = await _localConversationById(userId, page: safePage, limit: safeLimit);
       _conversationCache[cacheKey] = local;
       _conversationCacheAt[cacheKey] = DateTime.now();
       return local;
+    }
+  }
+
+  Future<TimelinePage> getTimeline({
+    String? withUserId,
+    bool forceRefresh = false,
+    int limit = 20,
+    String? cursor,
+  }) async {
+    final safeLimit = limit < 1 ? 20 : limit;
+    final keyUser = (withUserId ?? 'all').trim();
+    final keyCursor = (cursor ?? '').trim();
+    final cacheKey = 'with:$keyUser:c:$keyCursor:l$safeLimit';
+
+    if (!forceRefresh &&
+        _timelineCache.containsKey(cacheKey) &&
+        _isFresh(_timelineCacheAt[cacheKey])) {
+      final cached = _timelineCache[cacheKey]!;
+      return TimelinePage(items: cached, nextCursor: null, hasMore: cached.length >= safeLimit);
+    }
+
+    try {
+      final qp = <String, dynamic>{
+        'limit': safeLimit,
+      };
+      if (withUserId != null && withUserId.trim().isNotEmpty) {
+        qp['withUserId'] = withUserId.trim();
+      }
+      if (cursor != null && cursor.trim().isNotEmpty) {
+        qp['cursor'] = cursor.trim();
+      }
+
+      final response = await _api.get(ApiConfig.timeline, queryParameters: qp);
+      final data = response.data['data'];
+      if (data is! Map<String, dynamic>) {
+        return const TimelinePage(items: [], nextCursor: null, hasMore: false);
+      }
+
+      final items = (data['items'] as List?) ?? const [];
+      final parsed = items
+          .whereType<Map>()
+          .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
+          .toList()
+          .cast<Map<String, dynamic>>();
+
+      final nextCursor = data['cursor']?.toString();
+      final hasMore = (data['hasMore'] is bool) ? (data['hasMore'] as bool) : parsed.length >= safeLimit;
+
+      _timelineCache[cacheKey] = parsed;
+      _timelineCacheAt[cacheKey] = DateTime.now();
+      return TimelinePage(items: parsed, nextCursor: nextCursor, hasMore: hasMore);
+    } catch (e) {
+      if (_timelineCache.containsKey(cacheKey)) {
+        final cached = _timelineCache[cacheKey]!;
+        return TimelinePage(items: cached, nextCursor: null, hasMore: cached.length >= safeLimit);
+      }
+      rethrow;
     }
   }
 
@@ -616,9 +700,7 @@ class ExpenseService {
 
       final youPaid = !paidByMatch;
       final splitCount = expense.participants.length + 1;
-      final amount = splitCount > 0
-          ? (expense.amount / splitCount).toDouble()
-          : expense.amount.toDouble();
+      final amount = splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
 
       timeline.add({
         'type': 'expense',
@@ -682,4 +764,16 @@ class ExpenseService {
     ]);
     _emitUpdate();
   }
+}
+
+class TimelinePage {
+  final List<Map<String, dynamic>> items;
+  final String? nextCursor;
+  final bool hasMore;
+
+  const TimelinePage({
+    required this.items,
+    required this.nextCursor,
+    required this.hasMore,
+  });
 }

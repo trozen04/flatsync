@@ -64,6 +64,12 @@ class AppTextStyles {
     letterSpacing: 0.15,
     color: AppColors.textPrimary,
   );
+  static TextStyle buttonText(BuildContext context) => _baseStyle.copyWith(
+    fontSize: _responsiveSize(context, 16),
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.15,
+    color: Colors.white,
+  );
 
   static TextStyle titleSmall(BuildContext context) => _baseStyle.copyWith(
     fontSize: _responsiveSize(context, 14),

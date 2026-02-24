@@ -3,7 +3,7 @@ class ApiConfig {
  // static const String baseUrl = 'https://flatsync-backend.onrender.com/api';
   
   // For local development: Use your computer's IP address
-   static const String baseUrl = 'http://192.168.1.48:5000/api';
+   static const String baseUrl = 'http://192.168.1.47:5000/api';
   
   // For emulator: Use 10.0.2.2
   // static const String baseUrl = 'http://10.0.2.2:5000/api';
@@ -16,6 +16,9 @@ class ApiConfig {
   static const String login = '/auth/login';
   static const String refreshToken = '/auth/refresh-token';
   static const String me = '/auth/me';
+
+  // User profile endpoints
+  static const String usersMe = '/users/me';
   
   // Contact endpoints
   static const String matchContacts = '/contacts/match';
@@ -31,4 +34,7 @@ class ApiConfig {
   
   // Conversation endpoints
   static const String conversations = '/conversations';
+
+  // Unified timeline endpoints (used for chat + history)
+  static const String timeline = '/timeline';
 }

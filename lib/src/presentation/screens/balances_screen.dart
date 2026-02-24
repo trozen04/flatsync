@@ -9,12 +9,12 @@ import '../../core/constants/app_dimensions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_shadows.dart';
-import '../../core/widgets/app_container.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
 import '../../presentation/state/contact_provider.dart';
+import '../../utils/money_utils.dart';
 import 'conversation_screen.dart';
 
 class BalancesScreen extends StatefulWidget {
@@ -27,7 +27,7 @@ class BalancesScreen extends StatefulWidget {
 class _BalancesScreenState extends State<BalancesScreen> {
   Map<String, dynamic> _balances = {};
   bool _refreshing = false;
-  double _netBalance = 0;
+  int _netBalance = 0;
   static const double _currencyDivisor = 100.0;
 
   StreamSubscription<int>? _updatesSub;
@@ -89,17 +89,11 @@ class _BalancesScreenState extends State<BalancesScreen> {
       final expenseService = context.read<ExpenseService>();
       final balances = await expenseService.getBalances(forceRefresh: forceRefresh);
       
-      if (mounted && balances.isNotEmpty) {
-        final contactService = context.read<ContactService>();
-        final isar = context.read<IsarService>();
-        unawaited(contactService.autoSyncFromBalances(balances, isar));
-      }
-      
       if (!mounted) return;
       await _loadContactsLookup();
 
-      double net = 0;
-      balances.forEach((_, amount) => net += (amount as num).toDouble());
+      int net = 0;
+      balances.forEach((_, amount) => net += (amount as num).round());
 
       if (mounted) setState(() {
         _balances = balances;
@@ -118,13 +112,13 @@ class _BalancesScreenState extends State<BalancesScreen> {
     return _contactsByPhone[_canonicalPhone(userIdOrPhone)];
   }
 
-  Color _getBalanceColor(double amount) {
+  Color _getBalanceColor(int amount) {
     if (amount > 0) return AppColors.success;
     if (amount < 0) return AppColors.error;
     return AppColors.textSecondary;
   }
 
-  String _getBalanceText(double amount) {
+  String _getBalanceText(int amount) {
     final rupees = amount.abs() / _currencyDivisor;
     if (amount > 0) return 'owes you Rs ${rupees.toStringAsFixed(2)}';
     if (amount < 0) return 'you owe Rs ${rupees.toStringAsFixed(2)}';
@@ -176,14 +170,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
                   padding: AppDimensions.containerPadding(context),
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        _getBalanceColor(_netBalance).withOpacity(0.15),
-                        _getBalanceColor(_netBalance).withOpacity(0.05),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: _getBalanceColor(_netBalance).withOpacity(0.16),
@@ -195,7 +182,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
                       Text('Net Balance', style: AppTextStyles.labelLarge(context)),
                       AppDimensions.h10(context),
                       Text(
-                        'Rs ${(_netBalance.abs() / _currencyDivisor).toStringAsFixed(2)}',
+                        'Rs ${formatPaise(_netBalance)}',
                         style: AppTextStyles.currencyLarge(context).copyWith(color: _getBalanceColor(_netBalance)),
                       ),
                       AppDimensions.h5(context),
@@ -212,59 +199,68 @@ class _BalancesScreenState extends State<BalancesScreen> {
                     itemCount: _balances.length,
                     itemBuilder: (context, index) {
                       final key = _balances.keys.elementAt(index);
-                      final amount = (_balances[key] as num).toDouble();
+                      final amount = (_balances[key] as num).round();
                       final contact = _getContact(key);
                       final name = contactProvider.getDisplayName(key);
 
-                      return AppContainer(
+                      return Container(
                         margin: const EdgeInsets.only(bottom: 12),
-                        onTap: contact == null
-                            ? null
-                            : () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ConversationScreen(contact: contact),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                          boxShadow: AppShadows.card,
+                        ),
+                        child: InkWell(
+                          onTap: contact == null
+                              ? null
+                              : () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ConversationScreen(contact: contact),
+                                    ),
+                                  ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: _getBalanceColor(amount).withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                    style: TextStyle(
+                                      color: _getBalanceColor(amount),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
                                   ),
                                 ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                color: _getBalanceColor(amount).withOpacity(0.1),
-                                shape: BoxShape.circle,
                               ),
-                              child: Center(
-                                child: Text(
-                                  name.isNotEmpty ? name[0].toUpperCase() : '?',
-                                  style: TextStyle(
-                                    color: _getBalanceColor(amount),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 20,
-                                  ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: AppTextStyles.titleMedium(context).copyWith(fontSize: 15),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _getBalanceText(amount),
+                                      style: AppTextStyles.labelLarge(context).copyWith(color: _getBalanceColor(amount), fontSize: 13),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: AppTextStyles.titleMedium(context),
-                                  ),
-                                  AppDimensions.h5(context),
-                                  Text(
-                                    _getBalanceText(amount),
-                                    style: AppTextStyles.labelLarge(context).copyWith(color: _getBalanceColor(amount)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(Icons.chevron_right, color: Colors.grey.shade300, size: 24),
-                          ],
+                              Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 20),
+                            ],
+                          ),
                         ),
                       );
                     },

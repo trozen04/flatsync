@@ -71,6 +71,10 @@ class ApiService {
     return await _dio.put(path, data: data);
   }
 
+  Future<Response> patch(String path, {dynamic data}) async {
+    return await _dio.patch(path, data: data);
+  }
+
   Future<Response> delete(String path) async {
     return await _dio.delete(path);
   }
@@ -80,7 +84,7 @@ class ApiService {
   }
 
   void wakeUpServer() {
-    unawaited(Future(() async {
+    unawaited((() async {
       try {
         final prefs = await SharedPreferences.getInstance();
         final lastWakeUpRaw = prefs.get('last_wake_up');
@@ -91,9 +95,16 @@ class ApiService {
         
         if (now - lastWakeUp < 900000) return;
         
-        await prefs.setInt('last_wake_up', now).catchError((_) {});
-        unawaited(_dio.get('/health', options: Options(sendTimeout: const Duration(seconds: 5))).catchError((_) {}));
+        try {
+          await prefs.setInt('last_wake_up', now);
+        } catch (_) {}
+
+        unawaited((() async {
+          try {
+            await _dio.get('/health', options: Options(sendTimeout: const Duration(seconds: 5)));
+          } catch (_) {}
+        })());
       } catch (_) {}
-    }).catchError((_) {}));
+    })());
   }
 }

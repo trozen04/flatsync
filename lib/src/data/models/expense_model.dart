@@ -76,7 +76,10 @@ class ExpenseModel {
 
   /// Create from JSON received from network
   factory ExpenseModel.fromJson(Map<String, dynamic> json) {
-    final rawParticipants = json['participants'] as List?;
+    // Backend should send an array, but be defensive: some responses may contain
+    // `participants` as a count or another unexpected shape.
+    final raw = json['participants'];
+    final rawParticipants = (raw is List) ? raw : const [];
     final normalizedParticipants = (rawParticipants ?? [])
         .map((e) {
           if (e is String) return e;

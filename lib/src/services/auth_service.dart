@@ -174,6 +174,19 @@ class AuthService {
     }
   }
 
+  Future<UserModel?> updateMe({String? name, String? avatar}) async {
+    try {
+      final payload = <String, dynamic>{};
+      if (name != null) payload['name'] = name;
+      if (avatar != null) payload['avatar'] = avatar;
+
+      final response = await _api.patch(ApiConfig.usersMe, data: payload);
+      return UserModel.fromJson(response.data['data']);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String?> getCurrentUserId() async {
     return await _storage.read(key: 'user_id');
   }

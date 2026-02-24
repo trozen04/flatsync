@@ -10,6 +10,10 @@ import '../../core/theme/app_text_styles.dart';
 import '../../data/models/contact_model.dart';
 import '../../services/expense_service.dart';
 import '../../services/auth_service.dart';
+import '../../core/theme/app_shadows.dart';
+import '../../core/widgets/detail_dialog.dart';
+import '../../core/widgets/shadowed_app_bar.dart';
+import '../../utils/money_utils.dart';
 
 class ConversationScreen extends StatefulWidget {
   final ContactModel contact;
@@ -23,10 +27,12 @@ class ConversationScreen extends StatefulWidget {
 class _ConversationScreenState extends State<ConversationScreen> {
   List<dynamic> _transactions = [];
   bool _syncing = false;
+  bool _serverSyncing = false;
+  bool _submitting = false;
   bool _loadingMore = false;
   bool _hasMore = true;
-  int _currentPage = 1;
-  double _balance = 0;
+  String? _nextCursor;
+  int _balance = 0;
   String? _currentUserId;
   static const double _currencyDivisor = 100.0;
   final ScrollController _scrollController = ScrollController();
@@ -47,7 +53,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _loadLocalFirst() async {
     developer.log('🔵 _loadLocalFirst: START');
     if (mounted) setState(() => _syncing = true);
-    
     try {
       final contactId = widget.contact.contactId;
       final expenseService = context.read<ExpenseService>();
@@ -55,7 +60,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
       
       if (contactId != null && contactId.isNotEmpty) {
         developer.log('🔵 _loadLocalFirst: Loading by contactId=$contactId');
-        localData = await expenseService.getConversation(contactId, forceRefresh: false, page: 1);
+        final page = await expenseService.getTimeline(withUserId: contactId, forceRefresh: false);
+        localData = page.items;
+        _nextCursor = page.nextCursor;
+        _hasMore = page.hasMore;
       } else {
         developer.log('🔵 _loadLocalFirst: Loading by phone=${widget.contact.phoneNumber}');
         localData = await expenseService.getConversationByPhone(widget.contact.phoneNumber ?? '', forceRefresh: false);
@@ -72,7 +80,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         setState(() {
           _transactions = localData;
           _balance = balance;
-          _hasMore = localData.length >= 20;
+          _hasMore = _hasMore || localData.length >= 20;
           _syncing = false;
         });
         developer.log('🔵 _loadLocalFirst: State updated, _syncing=false');
@@ -88,7 +96,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   Future<void> _syncFromServer() async {
     developer.log('🟢 _syncFromServer: START, _syncing=$_syncing');
-    if (_syncing) {
+    if (_serverSyncing) {
       developer.log('🟡 _syncFromServer: Already syncing, RETURN');
       return;
     }
@@ -97,6 +105,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       developer.log('🟢 _syncFromServer: Set _syncing=true');
     }
     
+    _serverSyncing = true;
     try {
       final contactId = widget.contact.contactId;
       final expenseService = context.read<ExpenseService>();
@@ -104,7 +113,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
       
       if (contactId != null && contactId.isNotEmpty) {
         developer.log('🟢 _syncFromServer: Fetching by contactId=$contactId');
-        serverData = await expenseService.getConversation(contactId, forceRefresh: true, page: 1);
+        final page = await expenseService.getTimeline(withUserId: contactId, forceRefresh: true);
+        serverData = page.items;
+        _nextCursor = page.nextCursor;
+        _hasMore = page.hasMore;
       } else {
         developer.log('🟢 _syncFromServer: Fetching by phone=${widget.contact.phoneNumber}');
         serverData = await expenseService.getConversationByPhone(widget.contact.phoneNumber ?? '', forceRefresh: true);
@@ -121,14 +133,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
         setState(() {
           _transactions = serverData;
           _balance = balance;
-          _currentPage = 1;
-          _hasMore = serverData.length >= 20;
+          _hasMore = _hasMore || serverData.length >= 20;
         });
         developer.log('🟢 _syncFromServer: State updated');
       }
     } catch (e) {
       developer.log('🔴 _syncFromServer ERROR: $e');
     } finally {
+      _serverSyncing = false;
       if (mounted) {
         setState(() => _syncing = false);
         developer.log('🟢 _syncFromServer: Set _syncing=false, DONE');
@@ -151,7 +163,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels <= _scrollController.position.minScrollExtent + 200) {
+    // List is reversed (newest at bottom). Load older items when reaching the top.
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
       if (!_loadingMore && _hasMore) {
         _loadMore();
       }
@@ -164,17 +177,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
     return digits;
   }
 
-  double _resolveContactBalance(Map<String, dynamic> balances) {
+  int _resolveContactBalance(Map<String, dynamic> balances) {
     final contactId = widget.contact.contactId;
     if (contactId != null && contactId.isNotEmpty) {
       final byId = balances[contactId];
-      if (byId is num) return byId.toDouble();
+      if (byId is num) return byId.round();
     }
 
     final contactPhone = _canonicalPhone(widget.contact.phoneNumber);
     for (final entry in balances.entries) {
       if (_canonicalPhone(entry.key) == contactPhone && entry.value is num) {
-        return (entry.value as num).toDouble();
+        return (entry.value as num).round();
       }
     }
     return 0;
@@ -189,23 +202,37 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (contactId == null || contactId.isEmpty) return;
 
       final expenseService = context.read<ExpenseService>();
-      final conversation = await expenseService.getConversation(
-        contactId,
-        page: _currentPage + 1,
+      final page = await expenseService.getTimeline(
+        withUserId: contactId,
+        cursor: _nextCursor,
         forceRefresh: true,
       );
+      final conversation = page.items;
 
       if (!mounted) return;
       setState(() {
-        _transactions.addAll(conversation);
-        _currentPage++;
-        _hasMore = conversation.length >= 20;
+        final existingKeys = _transactions.map(_timelineKey).whereType<String>().toSet();
+        final filtered = conversation.where((e) {
+          final key = _timelineKey(e);
+          return key == null || !existingKeys.contains(key);
+        }).toList();
+        _transactions.addAll(filtered);
+        _nextCursor = page.nextCursor;
+        _hasMore = page.hasMore;
       });
     } catch (e) {
       developer.log('Load more error: $e');
     } finally {
       if (mounted) setState(() => _loadingMore = false);
     }
+  }
+
+  String? _timelineKey(dynamic item) {
+    if (item is! Map<String, dynamic>) return null;
+    final type = item['type']?.toString() ?? '';
+    final createdAt = item['createdAt']?.toString() ?? '';
+    final expenseId = item['expenseId']?.toString() ?? '';
+    return '$type:$expenseId:$createdAt';
   }
 
   Future<Map<String, dynamic>?> _showEntryDialog({required bool isTransaction}) async {
@@ -233,7 +260,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 TextField(
                   controller: descriptionController,
                   decoration: const InputDecoration(
-                    labelText: 'Description',
+                    labelText: 'Description (Optional)',
                     hintText: 'Dinner / Grocery / Cab',
                   ),
                 ),
@@ -247,10 +274,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                final amount = double.tryParse(amountController.text.trim());
-                if (amount == null || amount <= 0) return;
+                final amountPaise = parseRupeesToPaise(amountController.text);
+                if (amountPaise == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Enter a valid amount')),
+                  );
+                  return;
+                }
                 Navigator.pop(context, {
-                  'amount': amount,
+                  'amountPaise': amountPaise,
                   'description': descriptionController.text.trim(),
                 });
               },
@@ -263,6 +295,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _addExpenseFromChat() async {
+    if (_submitting) return;
     final phone = widget.contact.phoneNumber;
     if (phone == null || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -274,9 +307,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final input = await _showEntryDialog(isTransaction: false);
     if (input == null) return;
 
-    setState(() => _syncing = true);
+    if (mounted) setState(() => _submitting = true);
     try {
-      final amount = ((input['amount'] as double) * 100).toInt();
+      final amount = (input['amountPaise'] as num).toInt();
       final description = (input['description'] as String?)?.trim();
       await context.read<ExpenseService>().createExpense(
             description: (description == null || description.isEmpty) ? 'Expense' : description,
@@ -292,11 +325,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _syncing = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
   Future<void> _addTransactionFromChat() async {
+    if (_submitting) return;
     final toUserId = widget.contact.contactId;
     if (toUserId == null || toUserId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -308,9 +342,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final input = await _showEntryDialog(isTransaction: true);
     if (input == null) return;
 
-    setState(() => _syncing = true);
+    if (mounted) setState(() => _submitting = true);
     try {
-      final amount = ((input['amount'] as double) * 100).toInt();
+      final amount = (input['amountPaise'] as num).toInt();
       await context.read<ExpenseService>().createTransaction(
             toUserId: toUserId,
             amount: amount,
@@ -324,7 +358,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _syncing = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -345,8 +379,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(widget.contact.name ?? 'User'),
+      appBar: ShadowedAppBar(
+        child: AppBar(
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          title: Text(widget.contact.name ?? 'User'),
+        ),
       ),
       body: Column(
         children: [
@@ -365,7 +403,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 Text(balanceLabel, style: AppTextStyles.bodySmall(context)),
                 AppDimensions.h5(context),
                 Text(
-                  'Rs ${(_balance.abs() / _currencyDivisor).toStringAsFixed(2)}',
+                  'Rs ${formatPaise(_balance)}',
                   style: AppTextStyles.currency(context).copyWith(color: balanceColor),
                 ),
               ],
@@ -452,20 +490,89 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       itemBuilder: (context, index) {
                             final item = _transactions[index];
                             final type = item['type'];
-                            final amount = (item['amount'] as num).toDouble();
+                            final amount = (item['amount'] as num?)?.round() ?? 0;
+                            final totalAmount = (item['totalAmount'] as num?)?.round();
+                            final participants = (item['participants'] as num?)?.round() ?? 0;
                             final description = item['description'] ?? '';
                             final direction = item['direction'] as String? ?? '';
                             final date = DateTime.parse(item['createdAt'] as String);
-                            final expenseId = item['expenseId'] as String?;
+                            final expenseId = (item['expenseId'] ?? item['id']) as String?;
                             final createdBy = item['createdBy'] as String?;
                             final canDelete = type == 'expense' && expenseId != null && createdBy == _currentUserId;
                             final isYouPaid = direction == 'you_paid' || direction == 'sent';
                             final tagText = type == 'expense' ? 'Expense' : 'Transaction';
                             final tagColor = type == 'expense' ? Colors.orange : Colors.blue;
+                            
+                            developer.log('💬 CHAT ITEM: type=$type, amount=$amount, totalAmount=$totalAmount, participants=$participants, description=$description');
 
                             return Align(
                               alignment: isYouPaid ? Alignment.centerRight : Alignment.centerLeft,
                               child: GestureDetector(
+                                onTap: () {
+                                  developer.log('🔵 CHAT DIALOG: type=$type, amount=$amount, totalAmount=$totalAmount');
+                                  final items = <DetailItem>[];
+                                  
+                                  if (type == 'expense') {
+                                    items.add(DetailItem(
+                                      label: 'Description',
+                                      value: description,
+                                      icon: Icons.description,
+                                    ));
+                                    if (totalAmount != null) {
+                                      items.add(DetailItem(
+                                        label: 'Total Amount',
+                                        value: 'Rs ${formatPaise(totalAmount)}',
+                                        icon: Icons.account_balance_wallet,
+                                        valueColor: AppColors.primary,
+                                      ));
+                                    }
+                                    items.add(DetailItem(
+                                      label: 'Your Share',
+                                      value: 'Rs ${formatPaise(amount)}',
+                                      icon: Icons.person,
+                                      valueColor: AppColors.primary,
+                                    ));
+                                    if (participants > 0) {
+                                      items.add(DetailItem(
+                                        label: 'Split Between',
+                                        value: '${participants + 1} ${participants + 1 == 1 ? "person" : "people"}',
+                                        icon: Icons.group,
+                                      ));
+                                    }
+                                  } else {
+                                    items.add(DetailItem(
+                                      label: 'Description',
+                                      value: description,
+                                      icon: Icons.description,
+                                    ));
+                                    items.add(DetailItem(
+                                      label: 'Amount',
+                                      value: 'Rs ${formatPaise(amount)}',
+                                      icon: Icons.payments,
+                                      valueColor: isYouPaid ? AppColors.success : AppColors.info,
+                                    ));
+                                    items.add(DetailItem(
+                                      label: 'Type',
+                                      value: isYouPaid ? 'You paid' : 'You received',
+                                      icon: isYouPaid ? Icons.call_made : Icons.call_received,
+                                    ));
+                                  }
+                                  
+                                  items.add(DetailItem(
+                                    label: 'Date',
+                                    value: '${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                                    icon: Icons.calendar_today,
+                                  ));
+                                  
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => DetailDialog(
+                                      title: type == 'expense' ? 'Expense Details' : 'Transaction Details',
+                                      items: items,
+                                      accentColor: type == 'expense' ? AppColors.primary : (isYouPaid ? AppColors.success : AppColors.info),
+                                    ),
+                                  );
+                                },
                                 onLongPress: canDelete ? () async {
                                   final confirm = await showDialog<bool>(
                                     context: context,
@@ -506,85 +613,74 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                   }
                                 } : null,
                                 child: Container(
-                                margin: const EdgeInsets.only(bottom: 12),
+                                margin: const EdgeInsets.only(bottom: 8),
                                 constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                                 decoration: BoxDecoration(
                                   color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: BorderRadius.only(
-                                    topLeft: const Radius.circular(16),
-                                    topRight: const Radius.circular(16),
-                                    bottomLeft: Radius.circular(isYouPaid ? 16 : 4),
-                                    bottomRight: Radius.circular(isYouPaid ? 4 : 16),
-                                  ),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: isYouPaid
-                                        ? Colors.green.withOpacity(0.25)
-                                        : Colors.blue.withOpacity(0.22),
+                                    color: AppColors.border,
                                     width: 1,
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.06),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
+                                  boxShadow: AppShadows.card,
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: isYouPaid
-                                            ? Colors.green.withOpacity(0.08)
-                                            : tagColor.withOpacity(0.08),
+                                        color: (type == 'expense' ? AppColors.primary : (isYouPaid ? AppColors.success : AppColors.info)).withOpacity(0.1),
                                         borderRadius: const BorderRadius.only(
-                                          topLeft: Radius.circular(15),
-                                          topRight: Radius.circular(15),
+                                          topLeft: Radius.circular(11),
+                                          topRight: Radius.circular(11),
                                         ),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Icon(type == 'expense' ? Icons.receipt_long : Icons.payments,
-                                            size: 14, color: tagColor),
-                                          const SizedBox(width: 6),
+                                            size: 12, color: type == 'expense' ? AppColors.primary : (isYouPaid ? AppColors.success : AppColors.info)),
+                                          const SizedBox(width: 5),
                                           Text(
                                             tagText,
                                             style: TextStyle(
-                                              fontSize: 12,
-                                              color: tagColor,
+                                              fontSize: 11,
+                                              color: type == 'expense' ? AppColors.primary : (isYouPaid ? AppColors.success : AppColors.info),
                                               fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                           const Spacer(),
                                           Text(
                                             '${date.day}/${date.month}',
-                                            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                                            style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
                                           ),
                                         ],
                                       ),
                                     ),
                                     Padding(
-                                      padding: const EdgeInsets.all(12),
+                                      padding: const EdgeInsets.all(10),
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            description,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 15,
+                                          if (description.isNotEmpty) ...[
+                                            Text(
+                                              description,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                          ),
-                                          const SizedBox(height: 6),
+                                            const SizedBox(height: 5),
+                                          ],
                                           Text(
-                                            'Rs  ${(amount / _currencyDivisor).toStringAsFixed(2)}',
+                                            'Rs ${formatPaise(amount)}',
                                             style: TextStyle(
-                                              fontSize: 18,
+                                              fontSize: 16,
                                               fontWeight: FontWeight.bold,
-                                              color: Colors.grey.shade800,
+                                              color: AppColors.textPrimary,
                                             ),
                                           ),
                                         ],
@@ -605,17 +701,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     right: 0,
                     child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.12),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: AppShadows.card,
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -643,7 +733,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _syncing ? null : _addExpenseFromChat,
+                      onPressed: (_syncing || _submitting) ? null : _addExpenseFromChat,
                       icon: const Icon(Icons.receipt_long),
                       label: const Text('Add Expense'),
                     ),
@@ -651,7 +741,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _syncing ? null : _addTransactionFromChat,
+                      onPressed: (_syncing || _submitting) ? null : _addTransactionFromChat,
                       icon: const Icon(Icons.payments),
                       label: const Text('Add Transaction'),
                     ),

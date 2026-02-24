@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flatsync/src/data/models/expense_model.dart';
-import 'package:flatsync/src/domain/entities/settlement_entity.dart';
 import 'package:flatsync/src/core/theme/app_colors.dart';
 import 'package:flatsync/src/core/theme/app_text_styles.dart';
 import 'package:flatsync/src/core/theme/app_spacing.dart';
-import 'package:flatsync/src/core/widgets/app_button.dart';
 import 'package:flatsync/src/core/widgets/app_card.dart';
 import 'package:flatsync/src/core/widgets/app_input.dart';
-import 'package:flatsync/src/core/user/user_profile.dart';
-import 'package:flatsync/src/core/constants/app_constants.dart';
 import 'package:flatsync/src/presentation/state/contact_provider.dart';
 
 /// User dropdown widget for selecting who paid
@@ -109,128 +104,6 @@ class _AmountInputState extends State<AmountInput> {
         ),
       ),
     );
-  }
-}
-
-/// Expense list item widget
-class ExpenseListItem extends StatelessWidget {
-  final ExpenseModel expense;
-  final Function()? onDelete;
-
-  const ExpenseListItem({
-    Key? key,
-    required this.expense,
-    this.onDelete,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final amount = expense.amount / 100;
-    final contactProvider = context.watch<ContactProvider>();
-    final displayName = contactProvider.getDisplayName(expense.paidBy);
-    
-    return AppCard(
-      type: AppCardType.outlined,
-      padding: EdgeInsets.zero,
-      child: AppListTile(
-        leading: CircleAvatar(
-          backgroundColor: AppColors.primary.withOpacity(0.1),
-          child: Text(
-            displayName[0].toUpperCase(),
-            style: AppTextStyles.labelLarge(context).copyWith(
-              color: AppColors.primary,
-            ),
-          ),
-        ),
-        title: Text(
-          '$displayName paid ₹${amount.toStringAsFixed(2)}',
-          style: AppTextStyles.titleSmall(context),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (expense.description != null && expense.description!.isNotEmpty) ...[
-              AppSpacing.responsiveVerticalSpace(context, AppSpacing.xs),
-              Text(
-                expense.description!,
-                style: AppTextStyles.bodyMedium(context),
-              ),
-            ],
-            AppSpacing.responsiveVerticalSpace(context, AppSpacing.xs),
-            Text(
-              'Created: ${_formatDate(expense.createdAt)}',
-              style: AppTextStyles.bodySmall(context),
-            ),
-          ],
-        ),
-        trailing: AppIconButton(
-          icon: Icons.more_vert,
-          type: AppButtonType.text,
-          size: AppButtonSize.small,
-          onPressed: () => _showOptionsMenu(context),
-        ),
-      ),
-    );
-  }
-
-  void _showOptionsMenu(BuildContext context) {
-    // Check if current user is the one who added this expense
-    final currentUser = UserProfile.currentUserName;
-    final expenseUser = expense.paidBy;
-    final baseCurrentUser = AppConstants.getBaseUsername(currentUser ?? '');
-    final baseExpenseUser = AppConstants.getBaseUsername(expenseUser);
-    final canDelete = baseCurrentUser == baseExpenseUser;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppSpacing.responsive(context, 16)),
-        ),
-      ),
-      builder: (context) => Container(
-        padding: AppSpacing.screenPadding(context),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: AppSpacing.responsive(context, 40),
-              height: AppSpacing.responsive(context, 4),
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            AppSpacing.responsiveVerticalSpace(context, AppSpacing.lg),
-            if (canDelete)
-              AppButton(
-                text: 'Delete Expense',
-                icon: Icons.delete_outline,
-                onPressed: () {
-                  Navigator.pop(context);
-                  onDelete?.call();
-                },
-                type: AppButtonType.danger,
-                fullWidth: true,
-              )
-            else
-              Text(
-                'Only $baseExpenseUser can delete this expense',
-                style: AppTextStyles.bodySmall(context).copyWith(
-                  color: AppColors.warning,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            AppSpacing.responsiveVerticalSpace(context, AppSpacing.lg),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
 

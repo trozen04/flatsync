@@ -8,6 +8,7 @@ import '../../services/contact_service.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../core/widgets/shadowed_app_bar.dart';
 
 class ContactSelectionScreen extends StatefulWidget {
   const ContactSelectionScreen({super.key});
@@ -232,24 +233,28 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Select Contacts'),
-        actions: [
-          if (_selectedPhones.isNotEmpty)
-            TextButton(
-              onPressed: _syncing ? null : _syncSelected,
-              child: _syncing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(
-                      'Add (${_selectedPhones.length})',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-            ),
-        ],
+      appBar: ShadowedAppBar(
+        child: AppBar(
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          title: const Text('Select Contacts'),
+          actions: [
+            if (_selectedPhones.isNotEmpty)
+              TextButton(
+                onPressed: _syncing ? null : _syncSelected,
+                child: _syncing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text(
+                        'Add (${_selectedPhones.length})',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+              ),
+          ],
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
