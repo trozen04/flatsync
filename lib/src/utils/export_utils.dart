@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 import 'dart:io';
 import 'package:flatsync/src/data/models/expense_model.dart';
 import 'package:flatsync/src/domain/entities/settlement_entity.dart';
+import 'package:flatsync/src/utils/date_utils.dart';
 
 /// Utility class for exporting data to CSV
 class CSVExporter {
@@ -15,7 +16,7 @@ class CSVExporter {
     // Data rows
     for (final expense in expenses) {
       final amount = expense.amount / 100;
-      final date = expense.createdAt.toIso8601String();
+      final date = AppDateUtils.formatDateTime(expense.createdAt);
       final user = expense.paidBy;
       final description = expense.description ?? '';
 
@@ -76,14 +77,14 @@ class CSVExporter {
     final buffer = StringBuffer();
     
     buffer.writeln('Slice Expense Report');
-    buffer.writeln('${DateTime.now().toString().split('.')[0]}');
+    buffer.writeln(AppDateUtils.formatDateTime(DateTime.now()));
     buffer.writeln('═' * 50);
     
     // Expenses section
     buffer.writeln('\n📊 EXPENSES (${expenses.length})');
     buffer.writeln('─' * 50);
     for (final expense in expenses) {
-      final date = expense.createdAt.toString().split('.')[0];
+      final date = AppDateUtils.formatDateTime(expense.createdAt);
       final amount = (expense.amount / 100).toStringAsFixed(2);
       buffer.writeln('$date | ${expense.paidBy}');
       buffer.writeln('  ₹$amount${expense.description != null ? ' - ${expense.description}' : ''}');

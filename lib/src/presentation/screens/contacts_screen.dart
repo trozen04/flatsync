@@ -368,13 +368,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
           }).toList();
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-      body: Column(
-        children: [
-          if (_syncing || _refreshing) const LinearProgressIndicator(minHeight: 2),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-            child: TextField(
+      backgroundColor: Colors.white,
+      body: Padding(
+        padding: AppDimensions.appMargin(context),
+        child: Column(
+          children: [
+            if (_syncing || _refreshing) const LinearProgressIndicator(minHeight: 2),
+            TextField(
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Search contacts',
@@ -391,83 +391,83 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
               onChanged: (v) => setState(() => _query = v),
             ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => _refreshData(forceRefresh: true),
-              child: ListView.builder(
-                padding: AppDimensions.containerMargin(context),
-                itemCount: filtered.length,
-                itemBuilder: (context, index) {
-                  final contact = filtered[index];
-                  final balance = _balanceForContact(contact);
+            AppDimensions.h20(context),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () => _refreshData(forceRefresh: true),
+                child: ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final contact = filtered[index];
+                    final balance = _balanceForContact(contact);
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.border),
-                      boxShadow: AppShadows.card,
-                    ),
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => ConversationScreen(contact: contact)),
-                        );
-                      },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: _balanceColor(balance).withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Text(
-                                (contact.name ?? 'U')[0].toUpperCase(),
-                                style: TextStyle(
-                                  color: _balanceColor(balance),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                        boxShadow: AppShadows.card,
+                      ),
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => ConversationScreen(contact: contact)),
+                          );
+                        },
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: _balanceColor(balance).withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  (contact.name ?? 'U')[0].toUpperCase(),
+                                  style: TextStyle(
+                                    color: _balanceColor(balance),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  contact.name ?? 'Unknown',
-                                  style: AppTextStyles.titleMedium(context).copyWith(fontSize: 15),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _balanceText(balance),
-                                  style: AppTextStyles.labelLarge(context).copyWith(
-                                    color: _balanceColor(balance),
-                                    fontSize: 13,
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    contact.name ?? 'Unknown',
+                                    style: AppTextStyles.titleMedium(context).copyWith(fontSize: 15),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _balanceText(balance),
+                                    style: AppTextStyles.labelLarge(context).copyWith(
+                                      color: _balanceColor(balance),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 20),
-                        ],
+                            Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 20),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openContactSelection,

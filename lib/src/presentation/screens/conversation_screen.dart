@@ -14,6 +14,7 @@ import '../../core/theme/app_shadows.dart';
 import '../../core/widgets/detail_dialog.dart';
 import '../../core/widgets/shadowed_app_bar.dart';
 import '../../utils/money_utils.dart';
+import '../../utils/date_utils.dart';
 
 class ConversationScreen extends StatefulWidget {
   final ContactModel contact;
@@ -560,7 +561,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                   
                                   items.add(DetailItem(
                                     label: 'Date',
-                                    value: '${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                                    value: AppDateUtils.formatDateTime(date),
                                     icon: Icons.calendar_today,
                                   ));
                                   
@@ -652,7 +653,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                           ),
                                           const Spacer(),
                                           Text(
-                                            '${date.day}/${date.month}',
+                                            AppDateUtils.formatShortDate(date),
                                             style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
                                           ),
                                         ],

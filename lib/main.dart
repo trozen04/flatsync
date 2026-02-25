@@ -50,8 +50,9 @@ class FlatSyncApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Slice',
+      title: 'SplitEasy',
       theme: AppTheme.lightTheme,
+      themeMode: ThemeMode.light,
       routes: {
         '/contact-selection': (context) => const ContactSelectionScreen(),
       },

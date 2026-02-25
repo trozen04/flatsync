@@ -1,12 +1,15 @@
 class ApiConfig {
-  // Production URL
- // static const String baseUrl = 'https://flatsync-backend.onrender.com/api';
+  // Environment-based configuration
+  static const bool isProduction = bool.fromEnvironment('dart.vm.product');
   
-  // For local development: Use your computer's IP address
-   static const String baseUrl = 'http://192.168.1.47:5000/api';
+  // Production URL - UPDATE THIS WITH YOUR ACTUAL PRODUCTION URL
+  static const String productionUrl = 'https://flatsync-backend.onrender.com/api';
   
-  // For emulator: Use 10.0.2.2
-  // static const String baseUrl = 'http://10.0.2.2:5000/api';
+  // Development URL - Use your computer's IP address
+  static const String developmentUrl = 'http://192.168.1.47:5000/api';
+  
+  // Auto-select based on build mode
+  static String get baseUrl => isProduction ? productionUrl : developmentUrl;
   
   static const Duration timeout = Duration(seconds: 30);
   

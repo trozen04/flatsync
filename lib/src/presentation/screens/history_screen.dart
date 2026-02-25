@@ -3,7 +3,6 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/constants/app_dimensions.dart';
 import '../../core/theme/app_colors.dart';
@@ -13,6 +12,7 @@ import '../../presentation/state/contact_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/expense_service.dart';
 import '../../core/theme/app_shadows.dart';
+import '../../utils/date_utils.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -213,10 +213,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     
                     developer.log('📊 HISTORY ITEM: type=$type, amount=$amount, totalAmount=$totalAmount, participants=$participants, description=$description');
                     
-                    final dateFormat = DateFormat('d MMM, yyyy');
-                    final timeFormat = DateFormat('h:mm a');
-                    final formattedDate = dateFormat.format(date);
-                    final formattedTime = timeFormat.format(date);
+                    final formattedDate = AppDateUtils.formatDate(date);
+                    final formattedTime = AppDateUtils.formatTime(date);
                     
                     String displayName;
                     String subtitle;
