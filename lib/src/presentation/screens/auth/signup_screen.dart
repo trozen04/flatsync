@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:dio/dio.dart';
 import 'package:provider/provider.dart';
@@ -111,13 +112,20 @@ class _SignupScreenState extends State<SignupScreen> {
           children: [
             IntlPhoneField(
               initialCountryCode: 'IN',
-              disableLengthCheck: true,
+              disableLengthCheck: false,
               decoration: const InputDecoration(
                 labelText: 'Phone Number',
                 border: OutlineInputBorder(),
               ),
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(15),
+              ],
               onChanged: (phone) {
-                _phoneNumber = phone.completeNumber;
+                final digits = phone.number.replaceAll(RegExp(r'[^0-9]'), '');
+                if (digits.length >= 6 && digits.length <= 15) {
+                  _phoneNumber = phone.completeNumber;
+                }
               },
             ),
             AppDimensions.h20(context),

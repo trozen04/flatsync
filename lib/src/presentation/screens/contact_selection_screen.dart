@@ -106,9 +106,11 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
       developer.log('📞 Contacts with phone: ${contactsWithPhone.length}');
 
       if (mounted) {
+        final preselected = await _loadPreviouslyAddedPhones(contactsWithPhone);
         setState(() {
           _deviceContacts = contactsWithPhone;
           _filteredContacts = contactsWithPhone;
+          _selectedPhones = preselected;
           _loading = false;
         });
       }
@@ -119,6 +121,26 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
         CustomSnackBar.show(context, message: 'Failed to load contacts', isError: true);
         setState(() => _loading = false);
       }
+    }
+  }
+
+  Future<Set<String>> _loadPreviouslyAddedPhones(List<Contact> deviceContacts) async {
+    try {
+      final isar = context.read<IsarService>();
+      final savedContacts = await isar.isar.contactModels.where().findAll();
+      if (savedContacts.isEmpty) return <String>{};
+
+      final savedCanonicalPhones = savedContacts
+          .map((c) => _canonicalPhone(c.phoneNumber ?? ''))
+          .where((p) => p.isNotEmpty)
+          .toSet();
+
+      return deviceContacts
+          .map((c) => _normalizePhone(c.phones.first.number))
+          .where((phone) => savedCanonicalPhones.contains(_canonicalPhone(phone)))
+          .toSet();
+    } catch (_) {
+      return <String>{};
     }
   }
 

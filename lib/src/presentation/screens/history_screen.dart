@@ -8,6 +8,7 @@ import '../../core/constants/app_dimensions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/widgets/detail_dialog.dart';
+import '../../core/widgets/loading_indicator.dart';
 import '../../presentation/state/contact_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/expense_service.dart';
@@ -150,7 +151,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (_allTransactions.isEmpty) {
           return Column(
             children: [
-              if (_refreshing) const LinearProgressIndicator(minHeight: 2),
+              LoadingIndicator(isLoading: _refreshing),
               Expanded(
                 child: Center(
                   child: Column(
@@ -175,13 +176,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
           );
         }
 
-        return Column(
+        return Stack(
           children: [
-            if (_refreshing) const LinearProgressIndicator(minHeight: 2),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () => _loadHistory(forceRefresh: true),
-                child: ListView.builder(
+            Column(
+              children: [
+                LoadingIndicator(isLoading: _refreshing),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () => _loadHistory(forceRefresh: true),
+                    child: ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                   itemCount: _allTransactions.length + (_loadingMore ? 1 : 0),
@@ -413,6 +416,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   },
                 ),
               ),
+                ),
+              ],
             ),
           ],
         );

@@ -22,48 +22,43 @@ const UserModelSchema = CollectionSchema(
       name: r'accessToken',
       type: IsarType.string,
     ),
-    r'avatar': PropertySchema(
-      id: 1,
-      name: r'avatar',
-      type: IsarType.string,
-    ),
     r'createdAt': PropertySchema(
-      id: 2,
+      id: 1,
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
     r'hashedPin': PropertySchema(
-      id: 3,
+      id: 2,
       name: r'hashedPin',
       type: IsarType.string,
     ),
     r'isLoggedIn': PropertySchema(
-      id: 4,
+      id: 3,
       name: r'isLoggedIn',
       type: IsarType.bool,
     ),
     r'name': PropertySchema(
-      id: 5,
+      id: 4,
       name: r'name',
       type: IsarType.string,
     ),
     r'phoneNumber': PropertySchema(
-      id: 6,
+      id: 5,
       name: r'phoneNumber',
       type: IsarType.string,
     ),
     r'refreshToken': PropertySchema(
-      id: 7,
+      id: 6,
       name: r'refreshToken',
       type: IsarType.string,
     ),
     r'updatedAt': PropertySchema(
-      id: 8,
+      id: 7,
       name: r'updatedAt',
       type: IsarType.dateTime,
     ),
     r'userId': PropertySchema(
-      id: 9,
+      id: 8,
       name: r'userId',
       type: IsarType.string,
     )
@@ -109,12 +104,6 @@ int _userModelEstimateSize(
     }
   }
   {
-    final value = object.avatar;
-    if (value != null) {
-      bytesCount += 3 + value.length * 3;
-    }
-  }
-  {
     final value = object.hashedPin;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
@@ -154,15 +143,14 @@ void _userModelSerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeString(offsets[0], object.accessToken);
-  writer.writeString(offsets[1], object.avatar);
-  writer.writeDateTime(offsets[2], object.createdAt);
-  writer.writeString(offsets[3], object.hashedPin);
-  writer.writeBool(offsets[4], object.isLoggedIn);
-  writer.writeString(offsets[5], object.name);
-  writer.writeString(offsets[6], object.phoneNumber);
-  writer.writeString(offsets[7], object.refreshToken);
-  writer.writeDateTime(offsets[8], object.updatedAt);
-  writer.writeString(offsets[9], object.userId);
+  writer.writeDateTime(offsets[1], object.createdAt);
+  writer.writeString(offsets[2], object.hashedPin);
+  writer.writeBool(offsets[3], object.isLoggedIn);
+  writer.writeString(offsets[4], object.name);
+  writer.writeString(offsets[5], object.phoneNumber);
+  writer.writeString(offsets[6], object.refreshToken);
+  writer.writeDateTime(offsets[7], object.updatedAt);
+  writer.writeString(offsets[8], object.userId);
 }
 
 UserModel _userModelDeserialize(
@@ -173,15 +161,14 @@ UserModel _userModelDeserialize(
 ) {
   final object = UserModel(
     accessToken: reader.readStringOrNull(offsets[0]),
-    avatar: reader.readStringOrNull(offsets[1]),
-    createdAt: reader.readDateTimeOrNull(offsets[2]),
-    hashedPin: reader.readStringOrNull(offsets[3]),
-    isLoggedIn: reader.readBoolOrNull(offsets[4]) ?? false,
-    name: reader.readStringOrNull(offsets[5]),
-    phoneNumber: reader.readStringOrNull(offsets[6]),
-    refreshToken: reader.readStringOrNull(offsets[7]),
-    updatedAt: reader.readDateTimeOrNull(offsets[8]),
-    userId: reader.readStringOrNull(offsets[9]),
+    createdAt: reader.readDateTimeOrNull(offsets[1]),
+    hashedPin: reader.readStringOrNull(offsets[2]),
+    isLoggedIn: reader.readBoolOrNull(offsets[3]) ?? false,
+    name: reader.readStringOrNull(offsets[4]),
+    phoneNumber: reader.readStringOrNull(offsets[5]),
+    refreshToken: reader.readStringOrNull(offsets[6]),
+    updatedAt: reader.readDateTimeOrNull(offsets[7]),
+    userId: reader.readStringOrNull(offsets[8]),
   );
   object.id = id;
   return object;
@@ -197,22 +184,20 @@ P _userModelDeserializeProp<P>(
     case 0:
       return (reader.readStringOrNull(offset)) as P;
     case 1:
-      return (reader.readStringOrNull(offset)) as P;
-    case 2:
       return (reader.readDateTimeOrNull(offset)) as P;
-    case 3:
+    case 2:
       return (reader.readStringOrNull(offset)) as P;
-    case 4:
+    case 3:
       return (reader.readBoolOrNull(offset) ?? false) as P;
+    case 4:
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
       return (reader.readStringOrNull(offset)) as P;
     case 6:
       return (reader.readStringOrNull(offset)) as P;
     case 7:
-      return (reader.readStringOrNull(offset)) as P;
-    case 8:
       return (reader.readDateTimeOrNull(offset)) as P;
-    case 9:
+    case 8:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -577,152 +562,6 @@ extension UserModelQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'accessToken',
-        value: '',
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarIsNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNull(
-        property: r'avatar',
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarIsNotNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNotNull(
-        property: r'avatar',
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarEqualTo(
-    String? value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarGreaterThan(
-    String? value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarLessThan(
-    String? value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarBetween(
-    String? lower,
-    String? upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'avatar',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarStartsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.startsWith(
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarEndsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.endsWith(
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarContains(
-      String value,
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.contains(
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarMatches(
-      String pattern,
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.matches(
-        property: r'avatar',
-        wildcard: pattern,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'avatar',
-        value: '',
-      ));
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterFilterCondition> avatarIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        property: r'avatar',
         value: '',
       ));
     });
@@ -1699,18 +1538,6 @@ extension UserModelQuerySortBy on QueryBuilder<UserModel, UserModel, QSortBy> {
     });
   }
 
-  QueryBuilder<UserModel, UserModel, QAfterSortBy> sortByAvatar() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'avatar', Sort.asc);
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterSortBy> sortByAvatarDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'avatar', Sort.desc);
-    });
-  }
-
   QueryBuilder<UserModel, UserModel, QAfterSortBy> sortByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.asc);
@@ -1819,18 +1646,6 @@ extension UserModelQuerySortThenBy
   QueryBuilder<UserModel, UserModel, QAfterSortBy> thenByAccessTokenDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'accessToken', Sort.desc);
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterSortBy> thenByAvatar() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'avatar', Sort.asc);
-    });
-  }
-
-  QueryBuilder<UserModel, UserModel, QAfterSortBy> thenByAvatarDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'avatar', Sort.desc);
     });
   }
 
@@ -1952,13 +1767,6 @@ extension UserModelQueryWhereDistinct
     });
   }
 
-  QueryBuilder<UserModel, UserModel, QDistinct> distinctByAvatar(
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'avatar', caseSensitive: caseSensitive);
-    });
-  }
-
   QueryBuilder<UserModel, UserModel, QDistinct> distinctByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'createdAt');
@@ -2024,12 +1832,6 @@ extension UserModelQueryProperty
   QueryBuilder<UserModel, String?, QQueryOperations> accessTokenProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'accessToken');
-    });
-  }
-
-  QueryBuilder<UserModel, String?, QQueryOperations> avatarProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'avatar');
     });
   }
 

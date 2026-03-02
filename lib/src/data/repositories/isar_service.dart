@@ -112,13 +112,12 @@ class IsarService {
     return await isar.userModels.where().findFirst();
   }
 
-  Future<UserModel?> updateCurrentUserLocal({String? name, String? avatar}) async {
+  Future<UserModel?> updateCurrentUserLocal({String? name}) async {
     UserModel? updated;
     await isar.writeTxn(() async {
       final existing = await isar.userModels.where().findFirst();
       if (existing == null) return;
       if (name != null) existing.name = name;
-      if (avatar != null) existing.avatar = avatar;
       existing.updatedAt = DateTime.now();
       await isar.userModels.put(existing);
       updated = existing;

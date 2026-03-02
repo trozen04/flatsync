@@ -11,7 +11,6 @@ class UserModel {
   
   String? phoneNumber;
   String? name;
-  String? avatar;
   
   String? accessToken;
   String? refreshToken;
@@ -27,7 +26,6 @@ class UserModel {
     this.userId,
     this.phoneNumber,
     this.name,
-    this.avatar,
     this.accessToken,
     this.refreshToken,
     this.hashedPin,
@@ -41,7 +39,6 @@ class UserModel {
       userId: json['_id'],
       phoneNumber: json['phoneNumber'],
       name: json['name'],
-      avatar: json['avatar'],
       createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
     );
@@ -52,7 +49,6 @@ class UserModel {
       '_id': userId,
       'phoneNumber': phoneNumber,
       'name': name,
-      'avatar': avatar,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };

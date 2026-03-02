@@ -27,8 +27,7 @@ dependencies:
   # Authentication & Security
   flutter_secure_storage: ^9.0.0
 
-  # Contacts
-  # contacts_service: ^0.6.3  # Temporarily disabled due to namespace issue
+  # contacts_service: ^0.6.3
   flutter_contacts: ^1.1.7+1
   permission_handler: ^11.3.1
 
@@ -47,13 +46,10 @@ dependencies:
   path_provider: ^2.0.0
   share_plus: ^7.0.0
   shared_preferences: ^2.0.0
-  flutter_background_service: ^5.0.5
-  flutter_local_notifications: ^17.2.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^3.0.0
   build_runner: ^2.4.0
   isar_generator: ^3.1.0

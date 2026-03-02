@@ -36,3 +36,7 @@
     public static *** v(...);
     public static *** i(...);
 }
+
+# Flutter embedding includes deferred-components code paths that reference legacy
+# play.core task types. This app does not use deferred components.
+-dontwarn com.google.android.play.core.tasks.**

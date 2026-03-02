@@ -9,6 +9,7 @@ import '../../core/constants/app_dimensions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_shadows.dart';
+import '../../core/widgets/loading_indicator.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../services/expense_service.dart';
@@ -130,7 +131,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
     if (_balances.isEmpty) {
       return Column(
         children: [
-          if (_refreshing) const LinearProgressIndicator(minHeight: 2),
+          LoadingIndicator(isLoading: _refreshing),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _loadBalances(forceRefresh: true),
@@ -159,13 +160,18 @@ class _BalancesScreenState extends State<BalancesScreen> {
 
     return Consumer<ContactProvider>(
       builder: (context, contactProvider, _) {
-        return RefreshIndicator(
-          onRefresh: () => _loadBalances(forceRefresh: true),
-          child: Padding(
-            padding: AppDimensions.appMargin(context),
-            child: Column(
+        return Stack(
+          children: [
+            Column(
               children: [
-                if (_refreshing) const LinearProgressIndicator(minHeight: 2),
+                LoadingIndicator(isLoading: _refreshing),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () => _loadBalances(forceRefresh: true),
+                    child: Padding(
+                      padding: AppDimensions.appMargin(context),
+                      child: Column(
+              children: [
                 Container(
                   padding: AppDimensions.containerPadding(context),
                   width: double.infinity,
@@ -269,6 +275,11 @@ class _BalancesScreenState extends State<BalancesScreen> {
               ],
             ),
           ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         );
       },
     );

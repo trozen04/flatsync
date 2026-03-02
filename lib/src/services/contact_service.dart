@@ -161,7 +161,6 @@ class ContactService {
       name: existingNameGood
           ? existing.name
           : (incomingNameGood ? incoming.name : (existing.name?.isNotEmpty == true ? existing.name : incoming.name)),
-      avatar: incoming.avatar ?? existing.avatar,
       isRegistered: existing.isRegistered || incoming.isRegistered,
       createdAt: existing.createdAt ?? incoming.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),

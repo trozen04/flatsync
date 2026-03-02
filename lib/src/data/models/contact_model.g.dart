@@ -17,38 +17,33 @@ const ContactModelSchema = CollectionSchema(
   name: r'ContactModel',
   id: 122675080158055862,
   properties: {
-    r'avatar': PropertySchema(
-      id: 0,
-      name: r'avatar',
-      type: IsarType.string,
-    ),
     r'contactId': PropertySchema(
-      id: 1,
+      id: 0,
       name: r'contactId',
       type: IsarType.string,
     ),
     r'createdAt': PropertySchema(
-      id: 2,
+      id: 1,
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
     r'isRegistered': PropertySchema(
-      id: 3,
+      id: 2,
       name: r'isRegistered',
       type: IsarType.bool,
     ),
     r'name': PropertySchema(
-      id: 4,
+      id: 3,
       name: r'name',
       type: IsarType.string,
     ),
     r'phoneNumber': PropertySchema(
-      id: 5,
+      id: 4,
       name: r'phoneNumber',
       type: IsarType.string,
     ),
     r'updatedAt': PropertySchema(
-      id: 6,
+      id: 5,
       name: r'updatedAt',
       type: IsarType.dateTime,
     )
@@ -88,12 +83,6 @@ int _contactModelEstimateSize(
 ) {
   var bytesCount = offsets.last;
   {
-    final value = object.avatar;
-    if (value != null) {
-      bytesCount += 3 + value.length * 3;
-    }
-  }
-  {
     final value = object.contactId;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
@@ -120,13 +109,12 @@ void _contactModelSerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeString(offsets[0], object.avatar);
-  writer.writeString(offsets[1], object.contactId);
-  writer.writeDateTime(offsets[2], object.createdAt);
-  writer.writeBool(offsets[3], object.isRegistered);
-  writer.writeString(offsets[4], object.name);
-  writer.writeString(offsets[5], object.phoneNumber);
-  writer.writeDateTime(offsets[6], object.updatedAt);
+  writer.writeString(offsets[0], object.contactId);
+  writer.writeDateTime(offsets[1], object.createdAt);
+  writer.writeBool(offsets[2], object.isRegistered);
+  writer.writeString(offsets[3], object.name);
+  writer.writeString(offsets[4], object.phoneNumber);
+  writer.writeDateTime(offsets[5], object.updatedAt);
 }
 
 ContactModel _contactModelDeserialize(
@@ -136,13 +124,12 @@ ContactModel _contactModelDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = ContactModel(
-    avatar: reader.readStringOrNull(offsets[0]),
-    contactId: reader.readStringOrNull(offsets[1]),
-    createdAt: reader.readDateTimeOrNull(offsets[2]),
-    isRegistered: reader.readBoolOrNull(offsets[3]) ?? false,
-    name: reader.readStringOrNull(offsets[4]),
-    phoneNumber: reader.readStringOrNull(offsets[5]),
-    updatedAt: reader.readDateTimeOrNull(offsets[6]),
+    contactId: reader.readStringOrNull(offsets[0]),
+    createdAt: reader.readDateTimeOrNull(offsets[1]),
+    isRegistered: reader.readBoolOrNull(offsets[2]) ?? false,
+    name: reader.readStringOrNull(offsets[3]),
+    phoneNumber: reader.readStringOrNull(offsets[4]),
+    updatedAt: reader.readDateTimeOrNull(offsets[5]),
   );
   object.id = id;
   return object;
@@ -158,16 +145,14 @@ P _contactModelDeserializeProp<P>(
     case 0:
       return (reader.readStringOrNull(offset)) as P;
     case 1:
-      return (reader.readStringOrNull(offset)) as P;
-    case 2:
       return (reader.readDateTimeOrNull(offset)) as P;
-    case 3:
+    case 2:
       return (reader.readBoolOrNull(offset) ?? false) as P;
+    case 3:
+      return (reader.readStringOrNull(offset)) as P;
     case 4:
       return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readStringOrNull(offset)) as P;
-    case 6:
       return (reader.readDateTimeOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -391,159 +376,6 @@ extension ContactModelQueryWhere
 
 extension ContactModelQueryFilter
     on QueryBuilder<ContactModel, ContactModel, QFilterCondition> {
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarIsNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNull(
-        property: r'avatar',
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarIsNotNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNotNull(
-        property: r'avatar',
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition> avatarEqualTo(
-    String? value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarGreaterThan(
-    String? value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarLessThan(
-    String? value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition> avatarBetween(
-    String? lower,
-    String? upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'avatar',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarStartsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.startsWith(
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarEndsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.endsWith(
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.contains(
-        property: r'avatar',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition> avatarMatches(
-      String pattern,
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.matches(
-        property: r'avatar',
-        wildcard: pattern,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'avatar',
-        value: '',
-      ));
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
-      avatarIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        property: r'avatar',
-        value: '',
-      ));
-    });
-  }
-
   QueryBuilder<ContactModel, ContactModel, QAfterFilterCondition>
       contactIdIsNull() {
     return QueryBuilder.apply(this, (query) {
@@ -1223,18 +1055,6 @@ extension ContactModelQueryLinks
 
 extension ContactModelQuerySortBy
     on QueryBuilder<ContactModel, ContactModel, QSortBy> {
-  QueryBuilder<ContactModel, ContactModel, QAfterSortBy> sortByAvatar() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'avatar', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterSortBy> sortByAvatarDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'avatar', Sort.desc);
-    });
-  }
-
   QueryBuilder<ContactModel, ContactModel, QAfterSortBy> sortByContactId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'contactId', Sort.asc);
@@ -1312,18 +1132,6 @@ extension ContactModelQuerySortBy
 
 extension ContactModelQuerySortThenBy
     on QueryBuilder<ContactModel, ContactModel, QSortThenBy> {
-  QueryBuilder<ContactModel, ContactModel, QAfterSortBy> thenByAvatar() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'avatar', Sort.asc);
-    });
-  }
-
-  QueryBuilder<ContactModel, ContactModel, QAfterSortBy> thenByAvatarDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'avatar', Sort.desc);
-    });
-  }
-
   QueryBuilder<ContactModel, ContactModel, QAfterSortBy> thenByContactId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'contactId', Sort.asc);
@@ -1413,13 +1221,6 @@ extension ContactModelQuerySortThenBy
 
 extension ContactModelQueryWhereDistinct
     on QueryBuilder<ContactModel, ContactModel, QDistinct> {
-  QueryBuilder<ContactModel, ContactModel, QDistinct> distinctByAvatar(
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'avatar', caseSensitive: caseSensitive);
-    });
-  }
-
   QueryBuilder<ContactModel, ContactModel, QDistinct> distinctByContactId(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1465,12 +1266,6 @@ extension ContactModelQueryProperty
   QueryBuilder<ContactModel, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'id');
-    });
-  }
-
-  QueryBuilder<ContactModel, String?, QQueryOperations> avatarProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'avatar');
     });
   }
 

@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_shadows.dart';
 import '../../core/widgets/custom_button.dart';
+import '../../core/widgets/loading_indicator.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../services/contact_service.dart';
@@ -125,7 +126,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
           contact.contactId = resolved.contactId;
           contact.isRegistered = true;
           contact.name = contact.name?.isNotEmpty == true ? contact.name : resolved.name;
-          contact.avatar = resolved.avatar;
           contact.updatedAt = DateTime.now();
           updated.add(contact);
         }
@@ -319,7 +319,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     if (_contacts.isEmpty) {
       return Column(
         children: [
-          if (_syncing || _refreshing) const LinearProgressIndicator(minHeight: 2),
+          LoadingIndicator(isLoading: _syncing || _refreshing),
           Expanded(
             child: Center(
               child: Column(
@@ -373,7 +373,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         padding: AppDimensions.appMargin(context),
         child: Column(
           children: [
-            if (_syncing || _refreshing) const LinearProgressIndicator(minHeight: 2),
+            LoadingIndicator(isLoading: _syncing || _refreshing),
             TextField(
               controller: _searchController,
               decoration: InputDecoration(

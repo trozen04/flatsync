@@ -12,7 +12,6 @@ class ContactModel {
   String? phoneNumber; // Unique identifier
   
   String? name;
-  String? avatar;
   
   bool isRegistered = false; // Whether user is registered on backend
   
@@ -23,7 +22,6 @@ class ContactModel {
     this.contactId,
     this.name,
     this.phoneNumber,
-    this.avatar,
     this.isRegistered = false,
     this.createdAt,
     this.updatedAt,
@@ -34,7 +32,6 @@ class ContactModel {
       contactId: json['_id'],
       name: json['name'],
       phoneNumber: json['phoneNumber'],
-      avatar: json['avatar'],
       isRegistered: true,
       createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
@@ -46,7 +43,6 @@ class ContactModel {
       '_id': contactId,
       'name': name,
       'phoneNumber': phoneNumber,
-      'avatar': avatar,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };

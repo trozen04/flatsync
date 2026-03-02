@@ -13,6 +13,7 @@ import '../../services/auth_service.dart';
 import '../../core/theme/app_shadows.dart';
 import '../../core/widgets/detail_dialog.dart';
 import '../../core/widgets/shadowed_app_bar.dart';
+import '../../core/widgets/loading_indicator.dart';
 import '../../utils/money_utils.dart';
 import '../../utils/date_utils.dart';
 
@@ -410,49 +411,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               ],
             ),
           ),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            height: _syncing ? 36 : 0,
-            child: _syncing
-                ? Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1565C0),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF1565C0).withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          const Text(
-                            'Syncing data...',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
+          LoadingIndicator(isLoading: _syncing),
           Expanded(
             child: _transactions.isEmpty && _syncing
                 ? Center(

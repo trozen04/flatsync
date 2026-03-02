@@ -12,6 +12,7 @@ import '../../../services/contact_service.dart';
 import '../../../data/repositories/isar_service.dart';
 import '../../../utils/custom_snackbar.dart';
 import '../app_shell.dart';
+import 'forgot_pin_screen.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -43,7 +44,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     if (_phoneNumber.isEmpty || _pinController.text.isEmpty) {
-      CustomSnackBar.show(context, message: 'Enter phone and PIN', isError: true);
+      CustomSnackBar.show(context,
+          message: 'Enter phone and PIN', isError: true);
       return;
     }
 
@@ -51,12 +53,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final authService = context.read<AuthService>();
+      final isar = context.read<IsarService>();
       final user = await authService.login(
         phoneNumber: _phoneNumber,
         pin: _pinController.text,
       );
 
-      final isar = context.read<IsarService>();
       await isar.replaceCurrentUser(user);
 
       await _syncAfterLogin(isar);
@@ -96,13 +98,20 @@ class _LoginScreenState extends State<LoginScreen> {
               AppDimensions.h50(context),
               IntlPhoneField(
                 initialCountryCode: 'IN',
-                disableLengthCheck: true,
+                disableLengthCheck: false,
                 decoration: const InputDecoration(
                   labelText: 'Phone Number',
                   border: OutlineInputBorder(),
                 ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(15),
+                ],
                 onChanged: (phone) {
-                  _phoneNumber = phone.completeNumber;
+                  final digits = phone.number.replaceAll(RegExp(r'[^0-9]'), '');
+                  if (digits.length >= 6 && digits.length <= 15) {
+                    _phoneNumber = phone.completeNumber;
+                  }
                 },
               ),
               AppDimensions.h20(context),
@@ -112,7 +121,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   labelText: 'PIN',
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
-                    icon: Icon(_obscurePin ? Icons.visibility_off : Icons.visibility),
+                    icon: Icon(
+                        _obscurePin ? Icons.visibility_off : Icons.visibility),
                     onPressed: () => setState(() => _obscurePin = !_obscurePin),
                   ),
                 ),
@@ -128,6 +138,27 @@ class _LoginScreenState extends State<LoginScreen> {
                   text: 'Login',
                   onPressed: _login,
                   isLoading: _loading,
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () async {
+                    final resetDone = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const ForgotPinScreen()),
+                    );
+                    if (!context.mounted) return;
+                    if (resetDone == true) {
+                      CustomSnackBar.show(context,
+                          message: 'PIN reset successful. Please login.');
+                    }
+                  },
+                  child: Text(
+                    'Forgot PIN?',
+                    style: AppTextStyles.bodyMedium(context),
+                  ),
                 ),
               ),
               AppDimensions.h20(context),

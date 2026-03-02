@@ -198,10 +198,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
     final totalPaise = parseRupeesToPaise(_amountController.text) ?? 0;
     final totalAmount = totalPaise / 100.0;
     final perPerson =
         _selectedParticipants.isEmpty ? 0 : totalAmount / (_selectedParticipants.length + 1);
+    final bottomClearance = 120.0 + mediaQuery.viewPadding.bottom;
 
     if (_loadingContacts) {
       return const Center(child: CircularProgressIndicator());
@@ -250,156 +252,146 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
-        body: SafeArea(
-          child: Column(
-            children: [
-             // if (_submitting) const LinearProgressIndicator(minHeight: 2),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _loadLocalContacts,
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: AppDimensions.appMargin(context),
+        resizeToAvoidBottomInset: true,
+        body: Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadLocalContacts,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: AppDimensions.appMargin(context),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _amountController,
+                    decoration: InputDecoration(
+                      labelText: 'Amount',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      prefixText: 'Rs  ',
+                      hintText: '0.00',
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surface,
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d{0,6}(\.\d{0,2})?')),
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    style: AppTextStyles.currencyLarge(context),
+                  ),
+                  if (_recentAmountsPaise.isNotEmpty) ...[
+                    AppDimensions.h10(context),
+                    SizedBox(
+                      height: 36,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _recentAmountsPaise.length > 4 ? 4 : _recentAmountsPaise.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final paise = _recentAmountsPaise[index];
+                          final rupees = paise / 100;
+                          return ActionChip(
+                            label: Text('Rs ${rupees.toStringAsFixed(2)}'),
+                            onPressed: () {
+                              _amountController.text = rupees.toStringAsFixed(2);
+                              setState(() {});
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  AppDimensions.h20(context),
+                  TextField(
+                    controller: _descController,
+                    decoration: InputDecoration(
+                      labelText: 'Description (Optional)',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surface,
+                    ),
+                    maxLength: 50,
+                  ),
+                  AppDimensions.h20(context),
+                  Container(
+                    padding: AppDimensions.containerPadding(context),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.55),
+                      ),
+                      boxShadow: AppShadows.card,
+                    ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextField(
-                          controller: _amountController,
-                          decoration: InputDecoration(
-                            labelText: 'Amount',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                            prefixText: 'Rs  ',
-                            hintText: '0.00',
-                            filled: true,
-                            fillColor: Theme.of(context).colorScheme.surface,
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'^\d{0,6}(\.\d{0,2})?')),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Total:', style: AppTextStyles.labelLarge(context)),
+                            Text(
+                              'Rs ${totalAmount.toStringAsFixed(2)}',
+                              style: AppTextStyles.currency(context),
+                            ),
                           ],
-                          onChanged: (_) => setState(() {}),
-                          style: AppTextStyles.currencyLarge(context),
                         ),
-                        if (_recentAmountsPaise.isNotEmpty) ...[
-                          AppDimensions.h10(context),
-                          SizedBox(
-                            height: 36,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: _recentAmountsPaise.length > 4 ? 4 : _recentAmountsPaise.length,
-                              separatorBuilder: (_, __) => const SizedBox(width: 8),
-                              itemBuilder: (context, index) {
-                                final paise = _recentAmountsPaise[index];
-                                final rupees = paise / 100;
-                                return ActionChip(
-                                  label: Text('Rs ${rupees.toStringAsFixed(2)}'),
-                                  onPressed: () {
-                                    _amountController.text = rupees.toStringAsFixed(2);
-                                    setState(() {});
-                                  },
-                                );
-                              },
+                        const Divider(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Split with ${_selectedParticipants.length} ${_selectedParticipants.length == 1 ? "person" : "people"}',
+                              style: AppTextStyles.bodySmall(context),
                             ),
-                          ),
-                        ],
-                        AppDimensions.h20(context),
-                        TextField(
-                          controller: _descController,
-                          decoration: InputDecoration(
-                            labelText: 'Description (Optional)',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                            filled: true,
-                            fillColor: Theme.of(context).colorScheme.surface,
-                          ),
-                          maxLength: 50,
+                            Text(
+                              'Rs ${perPerson.toStringAsFixed(2)}/person',
+                              style: AppTextStyles.labelLarge(context).copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
                         ),
-                        AppDimensions.h20(context),
-                        Container(
-                          padding: AppDimensions.containerPadding(context),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.55),
-                            ),
-                            boxShadow: AppShadows.card,
-                          ),
-                          child: Column(
+                        AppDimensions.h10(context),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('Total:', style: AppTextStyles.labelLarge(context)),
-                                  Text(
-                                    'Rs ${totalAmount.toStringAsFixed(2)}',
-                                    style: AppTextStyles.currency(context),
-                                  ),
-                                ],
+                              ActionChip(
+                                label: Text(_selectedParticipants.isEmpty ? 'Choose people' : 'Edit people'),
+                                avatar: const Icon(Icons.group_add, size: 18),
+                                onPressed: _openParticipantPicker,
                               ),
-                              const Divider(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Split with ${_selectedParticipants.length} ${_selectedParticipants.length == 1 ? "person" : "people"}',
-                                    style: AppTextStyles.bodySmall(context),
-                                  ),
-                                  Text(
-                                    'Rs ${perPerson.toStringAsFixed(2)}/person',
-                                    style: AppTextStyles.labelLarge(context).copyWith(
-                                      color: Theme.of(context).colorScheme.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              AppDimensions.h10(context),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    ActionChip(
-                                      label: Text(_selectedParticipants.isEmpty ? 'Choose people' : 'Edit people'),
-                                      avatar: const Icon(Icons.group_add, size: 18),
-                                      onPressed: _openParticipantPicker,
-                                    ),
-                                    ..._selectedParticipants.take(6).map((phone) {
-                                      final c = _contactByPhone(phone);
-                                      final name = (c?.name ?? '').trim();
-                                      final label = name.isNotEmpty ? name : phone;
-                                      return InputChip(
-                                        label: Text(label, overflow: TextOverflow.ellipsis),
-                                        onDeleted: () => setState(() => _selectedParticipants.remove(phone)),
-                                      );
-                                    }),
-                                    if (_selectedParticipants.length > 6)
-                                      Chip(label: Text('+${_selectedParticipants.length - 6} more')),
-                                  ],
-                                ),
-                              ),
+                              ..._selectedParticipants.take(6).map((phone) {
+                                final c = _contactByPhone(phone);
+                                final name = (c?.name ?? '').trim();
+                                final label = name.isNotEmpty ? name : phone;
+                                return InputChip(
+                                  label: Text(label, overflow: TextOverflow.ellipsis),
+                                  onDeleted: () => setState(() => _selectedParticipants.remove(phone)),
+                                );
+                              }),
+                              if (_selectedParticipants.length > 6)
+                                Chip(label: Text('+${_selectedParticipants.length - 6} more')),
                             ],
                           ),
                         ),
-                        AppDimensions.h50(context),
                       ],
                     ),
                   ),
-                ),
+                  AppDimensions.h20(context),
+                  CustomButton(
+                    text: 'Add Expense',
+                    onPressed: _addExpense,
+                    isLoading: _submitting,
+                  ),
+                  SizedBox(height: bottomClearance),
+                ],
               ),
-            ],
+            ),
           ),
         ),
-        floatingActionButton: Container(
-          width: double.infinity,
-          padding: EdgeInsets.symmetric(horizontal: AppDimensions.width(context) * 0.04),
-          child: CustomButton(
-            text: 'Add Expense',
-            onPressed: _addExpense,
-            isLoading: _submitting,
-          ),
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       ),
     );
   }

@@ -23,7 +23,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _nameController = TextEditingController();
-  final _avatarController = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   UserModel? _user;
@@ -37,7 +36,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _avatarController.dispose();
     super.dispose();
   }
 
@@ -49,14 +47,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted && local != null) {
         _user = local;
         _nameController.text = local.name ?? '';
-        _avatarController.text = local.avatar ?? '';
       }
 
       final remote = await context.read<AuthService>().getCurrentUser();
       if (mounted && remote != null) {
         _user = remote;
         _nameController.text = remote.name ?? '';
-        _avatarController.text = remote.avatar ?? '';
         await isar.replaceCurrentUser(_mergeTokensIfPresent(local, remote));
       }
     } catch (e) {
@@ -79,7 +75,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _save() async {
     if (_saving) return;
     final name = _nameController.text.trim();
-    final avatarRaw = _avatarController.text.trim();
 
     if (name.isEmpty) {
       CustomSnackBar.show(context, message: 'Name is required', isError: true);
@@ -87,11 +82,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final currentName = (_user?.name ?? '').trim();
-    final currentAvatar = (_user?.avatar ?? '').trim();
     final nameUpdate = name == currentName ? null : name;
-    final avatarUpdate = avatarRaw == currentAvatar ? null : (avatarRaw.isEmpty ? '' : avatarRaw);
 
-    if (nameUpdate == null && avatarUpdate == null) {
+    if (nameUpdate == null) {
       CustomSnackBar.show(context, message: 'No changes to save');
       return;
     }
@@ -99,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _saving = true);
     try {
       final auth = context.read<AuthService>();
-      final updated = await auth.updateMe(name: nameUpdate, avatar: avatarUpdate);
+      final updated = await auth.updateMe(name: nameUpdate);
       if (updated == null) {
         CustomSnackBar.show(context, message: 'Unable to update profile', isError: true);
         return;
@@ -200,15 +193,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         textCapitalization: TextCapitalization.words,
                       ),
-                      AppDimensions.h10(context),
-                      TextField(
-                        controller: _avatarController,
-                        decoration: const InputDecoration(
-                          labelText: 'Avatar URL (optional)',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-
                     ],
                   ),
           ),

@@ -10,6 +10,8 @@ enum AuthFlow {
   login,
   sendSignupOtp,
   verifySignupOtp,
+  sendResetPinOtp,
+  verifyResetPinOtp,
 }
 
 class AuthService {
@@ -73,11 +75,32 @@ class AuthService {
         }
       }
 
+      if (flow == AuthFlow.sendResetPinOtp) {
+        if (statusCode == 429) {
+          return 'Please wait 10 seconds before requesting another OTP.';
+        }
+        if (statusCode == 404 || lower.contains('not found')) {
+          return 'User not found. Please sign up first.';
+        }
+      }
+
       if (flow == AuthFlow.verifySignupOtp && statusCode == 400) {
         if (lower.contains('invalid otp')) return 'Invalid OTP.';
         if (lower.contains('expired')) return 'OTP expired. Request a new OTP.';
         if (lower.contains('already exists')) {
           return 'User already exists. Please login.';
+        }
+      }
+
+      if (flow == AuthFlow.verifyResetPinOtp) {
+        if (statusCode == 400) {
+          if (lower.contains('invalid otp')) return 'Invalid OTP.';
+          if (lower.contains('expired')) {
+            return 'OTP expired. Request a new OTP.';
+          }
+        }
+        if (statusCode == 404 || lower.contains('not found')) {
+          return 'User not found. Please sign up first.';
         }
       }
 
@@ -96,6 +119,14 @@ class AuthService {
   Future<Map<String, dynamic>> sendSignupOtp(String phoneNumber) async {
     final response = await _api.post(
       ApiConfig.sendOtp,
+      data: {'phoneNumber': _normalizePhone(phoneNumber)},
+    );
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> sendResetPinOtp(String phoneNumber) async {
+    final response = await _api.post(
+      ApiConfig.sendResetPinOtp,
       data: {'phoneNumber': _normalizePhone(phoneNumber)},
     );
     return response.data;
@@ -159,6 +190,24 @@ class AuthService {
     return user;
   }
 
+  Future<void> verifyResetPinOtp({
+    required String phoneNumber,
+    required String otp,
+    required String pin,
+  }) async {
+    await _api.post(
+      ApiConfig.verifyResetPinOtp,
+      data: {
+        'phoneNumber': _normalizePhone(phoneNumber),
+        'otp': otp,
+        'pin': pin,
+      },
+    );
+
+    // Keep offline PIN check aligned with the latest successful reset.
+    await _storage.write(key: 'hashed_pin', value: _hashPin(pin));
+  }
+
   Future<bool> loginOffline(String pin) async {
     final storedHash = await _storage.read(key: 'hashed_pin');
     if (storedHash == null) return false;
@@ -174,11 +223,10 @@ class AuthService {
     }
   }
 
-  Future<UserModel?> updateMe({String? name, String? avatar}) async {
+  Future<UserModel?> updateMe({String? name}) async {
     try {
       final payload = <String, dynamic>{};
       if (name != null) payload['name'] = name;
-      if (avatar != null) payload['avatar'] = avatar;
 
       final response = await _api.patch(ApiConfig.usersMe, data: payload);
       return UserModel.fromJson(response.data['data']);
