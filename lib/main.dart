@@ -1,17 +1,15 @@
-import 'dart:developer' as developer;
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flatsync/src/data/repositories/isar_service.dart';
-import 'package:flatsync/src/services/api_service.dart';
-import 'package:flatsync/src/services/auth_service.dart';
-import 'package:flatsync/src/services/contact_service.dart';
-import 'package:flatsync/src/services/expense_service.dart';
-import 'package:flatsync/src/presentation/state/contact_provider.dart';
-import 'package:flatsync/src/presentation/screens/auth/login_screen.dart';
-import 'package:flatsync/src/presentation/screens/contact_selection_screen.dart';
-import 'package:flatsync/src/presentation/screens/app_shell.dart';
-import 'package:flatsync/src/core/theme/app_theme.dart';
+import 'package:flatsync/services/isar_service.dart';
+import 'package:flatsync/services/api_service.dart';
+import 'package:flatsync/services/auth_service.dart';
+import 'package:flatsync/services/contact_service.dart';
+import 'package:flatsync/services/expense_service.dart';
+import 'package:flatsync/bloc/contact_provider.dart';
+import 'package:flatsync/screens/auth/login_screen.dart';
+import 'package:flatsync/screens/shell/app_shell.dart';
+import 'package:flatsync/constants/app_theme.dart';
+import 'package:flatsync/routes/app_routes.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,9 +51,7 @@ class FlatSyncApp extends StatelessWidget {
       title: 'SplitEasy',
       theme: AppTheme.lightTheme,
       themeMode: ThemeMode.light,
-      routes: {
-        '/contact-selection': (context) => const ContactSelectionScreen(),
-      },
+      routes: AppRoutes.routes,
       home: FutureBuilder<bool>(
         future: context.read<AuthService>().isLoggedIn(),
         builder: (context, snapshot) {
@@ -72,3 +68,4 @@ class FlatSyncApp extends StatelessWidget {
     );
   }
 }
+

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "272711653813",
+    "project_id": "flatsync-70e41",
+    "storage_bucket": "flatsync-70e41.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:272711653813:android:227bc2a8ca2122c83fa1fc",
+        "android_client_info": {
+          "package_name": "com.trozen.flatsync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNysPPARuZpAbjYBQmmdbvnlKWAoEtTn4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
