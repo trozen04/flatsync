@@ -155,13 +155,24 @@ class ContactService {
     final existingNameGood = !_looksLikePhoneName(existing.name);
     final incomingNameGood = !_looksLikePhoneName(incoming.name);
 
+    // Use incoming.isRegistered if it came from a fresh API response (has contactId),
+    // otherwise keep the existing value to avoid stale overrides.
+    final incomingHasFreshData = incoming.contactId?.isNotEmpty ?? false;
+    final mergedIsRegistered = incomingHasFreshData ? incoming.isRegistered : existing.isRegistered;
+
+    developer.log(
+      '_mergeContact: phone=${_canonicalPhone(incoming.phoneNumber ?? existing.phoneNumber ?? '')} '
+      'existing.isRegistered=${existing.isRegistered} incoming.isRegistered=${incoming.isRegistered} '
+      'incomingHasFreshData=$incomingHasFreshData -> merged=$mergedIsRegistered',
+    );
+
     final merged = ContactModel(
       contactId: (incoming.contactId?.isNotEmpty ?? false) ? incoming.contactId : existing.contactId,
       phoneNumber: _canonicalPhone(incoming.phoneNumber ?? existing.phoneNumber ?? ''),
       name: existingNameGood
           ? existing.name
           : (incomingNameGood ? incoming.name : (existing.name?.isNotEmpty == true ? existing.name : incoming.name)),
-      isRegistered: existing.isRegistered || incoming.isRegistered,
+      isRegistered: mergedIsRegistered,
       createdAt: existing.createdAt ?? incoming.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -294,10 +305,11 @@ class ContactService {
       );
 
       final result = response.data['data'];
+      developer.log('matchContactsList raw response: $result');
       final matchedUsers = result is Map<String, dynamic>
           ? (result['registeredUsers'] as List? ?? const [])
           : (result as List? ?? const []);
-      developer.log('Matched ${matchedUsers.length} users');
+      developer.log('matchContactsList: sent ${payload.length} contacts, got ${matchedUsers.length} registered users back');
       final models = <ContactModel>[];
       for (var i = 0; i < matchedUsers.length; i++) {
         final json = matchedUsers[i];

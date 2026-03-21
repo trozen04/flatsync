@@ -16,6 +16,7 @@ import '../../core/widgets/shadowed_app_bar.dart';
 import '../../core/widgets/loading_indicator.dart';
 import '../../utils/money_utils.dart';
 import '../../utils/date_utils.dart';
+import '../widgets/contact_identity_details.dart';
 
 class ConversationScreen extends StatefulWidget {
   final ContactModel contact;
@@ -385,7 +386,19 @@ class _ConversationScreenState extends State<ConversationScreen> {
         child: AppBar(
           elevation: 0,
           scrolledUnderElevation: 0,
-          title: Text(widget.contact.name ?? 'User'),
+          title: ContactIdentityDetails(
+            name: widget.contact.name ?? 'User',
+            phoneNumber: widget.contact.phoneNumber,
+            isVerified: widget.contact.isRegistered,
+            nameStyle: AppTextStyles.titleMedium(context).copyWith(
+              color: Colors.white,
+              fontSize: 16,
+            ),
+            phoneStyle: AppTextStyles.bodySmall(context).copyWith(
+              color: Colors.white70,
+              fontSize: 12,
+            ),
+          ),
         ),
       ),
       body: Column(

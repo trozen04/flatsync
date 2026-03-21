@@ -13,7 +13,7 @@ class ContactModel {
   
   String? name;
   
-  bool isRegistered = false; // Whether user is registered on backend
+  bool isRegistered = false; // True only when backend accountStatus is active
   
   DateTime? createdAt;
   DateTime? updatedAt;
@@ -28,11 +28,15 @@ class ContactModel {
   });
 
   factory ContactModel.fromJson(Map<String, dynamic> json) {
+    final status = (json['accountStatus'] ?? '').toString().trim().toLowerCase();
+    final isReg = status == 'active';
+    // ignore: avoid_print
+    print('[ContactModel.fromJson] phone=${json['phoneNumber']} accountStatus="$status" -> isRegistered=$isReg');
     return ContactModel(
       contactId: json['_id'],
       name: json['name'],
       phoneNumber: json['phoneNumber'],
-      isRegistered: true,
+      isRegistered: isReg,
       createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
     );

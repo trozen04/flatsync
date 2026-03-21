@@ -16,10 +16,13 @@ import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
 import '../../presentation/state/contact_provider.dart';
 import '../../utils/money_utils.dart';
+import '../widgets/contact_identity_details.dart';
 import 'conversation_screen.dart';
 
 class BalancesScreen extends StatefulWidget {
-  const BalancesScreen({super.key});
+  final VoidCallback onNavigateToAddExpense;
+
+  const BalancesScreen({super.key, required this.onNavigateToAddExpense});
 
   @override
   State<BalancesScreen> createState() => _BalancesScreenState();
@@ -150,6 +153,14 @@ class _BalancesScreenState extends State<BalancesScreen> {
                   Center(
                     child: Text('Add expenses to see balances', style: AppTextStyles.bodyMedium(context)),
                   ),
+                  AppDimensions.h20(context),
+                  Center(
+                    child: FilledButton.icon(
+                      onPressed: widget.onNavigateToAddExpense,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Expense'),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -249,19 +260,22 @@ class _BalancesScreenState extends State<BalancesScreen> {
                               ),
                               const SizedBox(width: 14),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      name,
-                                      style: AppTextStyles.titleMedium(context).copyWith(fontSize: 15),
+                                child: ContactIdentityDetails(
+                                  name: name,
+                                  phoneNumber: contact?.phoneNumber ?? key,
+                                  isVerified: contact?.isRegistered ?? false,
+                                  nameStyle: AppTextStyles.titleMedium(context).copyWith(fontSize: 15),
+                                  phoneStyle: AppTextStyles.bodySmall(context).copyWith(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                  extra: Text(
+                                    _getBalanceText(amount),
+                                    style: AppTextStyles.labelLarge(context).copyWith(
+                                      color: _getBalanceColor(amount),
+                                      fontSize: 13,
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _getBalanceText(amount),
-                                      style: AppTextStyles.labelLarge(context).copyWith(color: _getBalanceColor(amount), fontSize: 13),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
                               Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 20),

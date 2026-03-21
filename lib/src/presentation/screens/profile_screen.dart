@@ -23,6 +23,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   UserModel? _user;
@@ -36,6 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -47,12 +49,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted && local != null) {
         _user = local;
         _nameController.text = local.name ?? '';
+        _phoneController.text = local.phoneNumber ?? '';
       }
 
       final remote = await context.read<AuthService>().getCurrentUser();
       if (mounted && remote != null) {
         _user = remote;
         _nameController.text = remote.name ?? '';
+        _phoneController.text = remote.phoneNumber ?? '';
         await isar.replaceCurrentUser(_mergeTokensIfPresent(local, remote));
       }
     } catch (e) {
@@ -192,6 +196,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           border: OutlineInputBorder(),
                         ),
                         textCapitalization: TextCapitalization.words,
+                      ),
+                      AppDimensions.h10(context),
+                      TextField(
+                        controller: _phoneController,
+                        readOnly: true,
+                        enableInteractiveSelection: false,
+                        decoration: const InputDecoration(
+                          labelText: 'Mobile Number',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                     ],
                   ),

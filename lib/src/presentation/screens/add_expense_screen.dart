@@ -16,7 +16,9 @@ import '../../data/repositories/isar_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
 import '../../utils/custom_snackbar.dart';
+import 'contact_selection_screen.dart';
 import '../../utils/money_utils.dart';
+import '../widgets/contact_identity_details.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   const AddExpenseScreen({super.key});
@@ -84,6 +86,15 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         return _ParticipantPickerSheet(
           contacts: _contacts,
           initiallySelected: _selectedParticipants,
+          onAddContacts: () async {
+            Navigator.pop(ctx, null); // close sheet first
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ContactSelectionScreen()),
+            );
+            await _loadLocalContacts();
+            if (mounted) _openParticipantPicker(); // re-open with fresh contacts
+          },
         );
       },
     );
@@ -212,38 +223,41 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     if (_contacts.isEmpty) {
       return RefreshIndicator(
         onRefresh: _loadLocalContacts,
-        child: ListView(
-          children: [
-            AppDimensions.h100(context),
-            const Icon(Icons.people_outline, size: 64, color: AppColors.textTertiary),
-            AppDimensions.h20(context),
-            Center(
-              child: Text(
-                'No contacts',
-                style: AppTextStyles.headlineSmall(context),
+        child: Padding(
+          padding: AppDimensions.appMargin(context),
+          child: ListView(
+            children: [
+              AppDimensions.h100(context),
+              const Icon(Icons.people_outline, size: 64, color: AppColors.textTertiary),
+              AppDimensions.h20(context),
+              Center(
+                child: Text(
+                  'No contacts',
+                  style: AppTextStyles.headlineSmall(context),
+                ),
               ),
-            ),
-            AppDimensions.h10(context),
-            Center(
-              child: Text(
-                'Add contacts to split expenses',
-                style: AppTextStyles.bodyMedium(context),
+              AppDimensions.h10(context),
+              Center(
+                child: Text(
+                  'Add contacts to split expenses',
+                  style: AppTextStyles.bodyMedium(context),
+                ),
               ),
-            ),
-            AppDimensions.h20(context),
-            Center(
-              child: CustomButton(
-                text: 'Import Contacts',
-                icon: Icons.person_add,
-                onPressed: () async {
-                  final result = await Navigator.pushNamed(context, '/contact-selection');
-                  if (result != null) {
-                    await _loadLocalContacts();
-                  }
-                },
+              AppDimensions.h20(context),
+              Center(
+                child: CustomButton(
+                  text: 'Import Contacts',
+                  icon: Icons.person_add,
+                  onPressed: () async {
+                    final result = await Navigator.pushNamed(context, '/contact-selection');
+                    if (result != null) {
+                      await _loadLocalContacts();
+                    }
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -253,13 +267,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       child: Scaffold(
         backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
         resizeToAvoidBottomInset: true,
-        body: Expanded(
-          child: RefreshIndicator(
-            onRefresh: _loadLocalContacts,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: AppDimensions.appMargin(context),
-              child: Column(
+        body: RefreshIndicator(
+          onRefresh: _loadLocalContacts,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: AppDimensions.appMargin(context),
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TextField(
@@ -391,7 +404,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ),
             ),
           ),
-        ),
       ),
     );
   }
@@ -400,10 +412,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 class _ParticipantPickerSheet extends StatefulWidget {
   final List<ContactModel> contacts;
   final List<String> initiallySelected;
+  final VoidCallback onAddContacts;
 
   const _ParticipantPickerSheet({
     required this.contacts,
     required this.initiallySelected,
+    required this.onAddContacts,
   });
 
   @override
@@ -459,6 +473,11 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                       style: AppTextStyles.titleMedium(context),
                     ),
                   ),
+                  TextButton.icon(
+                    onPressed: widget.onAddContacts,
+                    icon: const Icon(Icons.person_add_alt_1, size: 18),
+                    label: const Text('Add'),
+                  ),
                   TextButton(
                     onPressed: () => Navigator.pop(context, _selected),
                     child: Text('Done (${_selected.length})'),
@@ -487,7 +506,29 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
               ),
             ),
             Expanded(
-              child: ListView.builder(
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.people_outline, size: 48, color: AppColors.textTertiary),
+                          const SizedBox(height: 12),
+                          Text(
+                            _query.isEmpty ? 'No contacts yet' : 'No results',
+                            style: AppTextStyles.bodyMedium(context),
+                          ),
+                          if (_query.isEmpty) ...[
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: widget.onAddContacts,
+                              icon: const Icon(Icons.person_add_alt_1),
+                              label: const Text('Add Contacts'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                 itemCount: filtered.length,
                 itemBuilder: (context, index) {
@@ -542,21 +583,15 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                           ),
                           const SizedBox(width: 14),
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  contact.name ?? 'Unknown',
-                                  style: AppTextStyles.titleMedium(context).copyWith(fontSize: 15, color: fg),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  contact.phoneNumber ?? '',
-                                  style: AppTextStyles.bodySmall(context).copyWith(fontSize: 12, color: secondaryFg),
-                                ),
-                              ],
+                            child: ContactIdentityDetails(
+                              name: contact.name ?? 'Unknown',
+                              phoneNumber: contact.phoneNumber,
+                              isVerified: contact.isRegistered,
+                              nameStyle: AppTextStyles.titleMedium(context).copyWith(fontSize: 15, color: fg),
+                              phoneStyle: AppTextStyles.bodySmall(context).copyWith(
+                                fontSize: 12,
+                                color: secondaryFg,
+                              ),
                             ),
                           ),
                           AnimatedContainer(

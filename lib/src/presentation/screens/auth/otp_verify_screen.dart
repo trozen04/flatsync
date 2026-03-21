@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../../../core/constants/app_dimensions.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/expense_service.dart';
@@ -14,7 +13,13 @@ import '../app_shell.dart';
 
 class OtpVerifyScreen extends StatefulWidget {
   final String phoneNumber;
-  const OtpVerifyScreen({super.key, required this.phoneNumber});
+  final String deliveryLabel;
+
+  const OtpVerifyScreen({
+    super.key,
+    required this.phoneNumber,
+    this.deliveryLabel = 'messages',
+  });
 
   @override
   State<OtpVerifyScreen> createState() => _OtpVerifyScreenState();
@@ -88,17 +93,21 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        appBar: AppBar(title: const Text('Verify OTP')),
+        appBar: AppBar(title: const Text('Verify Code')),
         body: SafeArea(
           child: Padding(
             padding: AppDimensions.appMargin(context),
             child: Column(
-             // mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                Text(
+                  'Enter the code sent to your ${widget.deliveryLabel}.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                AppDimensions.h20(context),
                 TextField(
                   controller: _otpController,
                   decoration: const InputDecoration(
-                    labelText: 'OTP',
+                    labelText: 'Code',
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.number,

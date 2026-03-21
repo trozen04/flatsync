@@ -34,7 +34,7 @@ class _AppShellState extends State<AppShell> {
     return _screens[index] ??= switch (index) {
       0 => const AddExpenseScreen(),
       1 => const ContactsScreen(),
-      2 => const BalancesScreen(),
+      2 => BalancesScreen(onNavigateToAddExpense: () => setState(() => _selectedIndex = 0)),
       3 => const HistoryScreen(),
       _ => const ProfileScreen(showAppBar: false),
     };

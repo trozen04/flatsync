@@ -17,6 +17,7 @@ import '../../data/repositories/isar_service.dart';
 import '../../services/contact_service.dart';
 import '../../services/expense_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../widgets/contact_identity_details.dart';
 import 'contact_selection_screen.dart';
 import 'conversation_screen.dart';
 
@@ -122,9 +123,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       for (final contact in unresolved) {
         final resolved = await contactService.addContactByPhone(contact.phoneNumber!);
-        if (resolved != null) {
+        if (resolved != null && resolved.isRegistered) {
           contact.contactId = resolved.contactId;
-          contact.isRegistered = true;
+          contact.isRegistered = resolved.isRegistered;
           contact.name = contact.name?.isNotEmpty == true ? contact.name : resolved.name;
           contact.updatedAt = DateTime.now();
           updated.add(contact);
@@ -317,44 +318,47 @@ class _ContactsScreenState extends State<ContactsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_contacts.isEmpty) {
-      return Column(
-        children: [
-          LoadingIndicator(isLoading: _syncing || _refreshing),
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.contacts_outlined, size: 64, color: AppColors.textTertiary),
-                  AppDimensions.h20(context),
-                  Text(
-                    'No contacts found',
-                    style: AppTextStyles.headlineSmall(context),
-                  ),
-                  AppDimensions.h10(context),
-                  Text(
-                    'Sync your device contacts to start splitting',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.bodyMedium(context),
-                  ),
-                  AppDimensions.h20(context),
-                  CustomButton(
-                    text: 'Select from Contacts',
-                    icon: Icons.contacts,
-                    onPressed: _openContactSelection,
-                  ),
-                  AppDimensions.h10(context),
-                  CustomButton(
-                    text: 'Add by Phone Number',
-                    icon: Icons.person_add,
-                    onPressed: _addManualContact,
-                    isOutlined: true,
-                  ),
-                ],
+      return Padding(
+        padding: AppDimensions.appMargin(context),
+        child: Column(
+          children: [
+            LoadingIndicator(isLoading: _syncing || _refreshing),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.contacts_outlined, size: 64, color: AppColors.textTertiary),
+                    AppDimensions.h20(context),
+                    Text(
+                      'No contacts found',
+                      style: AppTextStyles.headlineSmall(context),
+                    ),
+                    AppDimensions.h10(context),
+                    Text(
+                      'Sync your device contacts to start splitting',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.bodyMedium(context),
+                    ),
+                    AppDimensions.h20(context),
+                    CustomButton(
+                      text: 'Select from Contacts',
+                      icon: Icons.contacts,
+                      onPressed: _openContactSelection,
+                    ),
+                    AppDimensions.h10(context),
+                    CustomButton(
+                      text: 'Add by Phone Number',
+                      icon: Icons.person_add,
+                      onPressed: _addManualContact,
+                      isOutlined: true,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
@@ -439,22 +443,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             ),
                             const SizedBox(width: 14),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    contact.name ?? 'Unknown',
-                                    style: AppTextStyles.titleMedium(context).copyWith(fontSize: 15),
+                              child: ContactIdentityDetails(
+                                name: contact.name ?? 'Unknown',
+                                phoneNumber: contact.phoneNumber,
+                                isVerified: contact.isRegistered,
+                                nameStyle: AppTextStyles.titleMedium(context).copyWith(fontSize: 15),
+                                phoneStyle: AppTextStyles.bodySmall(context).copyWith(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                                extra: Text(
+                                  _balanceText(balance),
+                                  style: AppTextStyles.labelLarge(context).copyWith(
+                                    color: _balanceColor(balance),
+                                    fontSize: 13,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _balanceText(balance),
-                                    style: AppTextStyles.labelLarge(context).copyWith(
-                                      color: _balanceColor(balance),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
                             Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 20),

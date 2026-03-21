@@ -76,7 +76,7 @@ class CSVExporter {
   ) {
     final buffer = StringBuffer();
     
-    buffer.writeln('Slice Expense Report');
+    buffer.writeln('SplitEasy Expense Report');
     buffer.writeln(AppDateUtils.formatDateTime(DateTime.now()));
     buffer.writeln('═' * 50);
     
@@ -121,7 +121,7 @@ class CSVExporter {
     }
     
     buffer.writeln('\n' + '═' * 50);
-    buffer.writeln('Exported from Slice');
+    buffer.writeln('Exported from SplitEasy');
     
     return buffer.toString();
   }

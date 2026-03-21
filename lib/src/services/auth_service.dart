@@ -2,6 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import '../data/models/user_model.dart';
 import '../core/constants/api_config.dart';
 import 'api_service.dart';
@@ -42,6 +43,14 @@ class AuthService {
     return '';
   }
 
+  String describeOtpDestination(Map<String, dynamic>? responseData) {
+    final label = responseData?['data']?['deliveryChannelLabel']?.toString().trim();
+    if (label != null && label.isNotEmpty) {
+      return label;
+    }
+    return 'messages';
+  }
+
   String getAuthErrorMessage(Object error, {required AuthFlow flow}) {
     if (error is DioException) {
       final statusCode = error.response?.statusCode;
@@ -68,19 +77,29 @@ class AuthService {
 
       if (flow == AuthFlow.sendSignupOtp) {
         if (statusCode == 429) {
-          return 'Please wait 10 seconds before requesting another OTP.';
+          return serverError.isNotEmpty
+              ? serverError
+              : 'Please wait 2 minutes before requesting another OTP.';
         }
         if (statusCode == 400 && lower.contains('already exists')) {
           return 'Phone already registered. Please login.';
+        }
+        if (lower.contains('template')) {
+          return 'WhatsApp OTP template is not ready yet. Check backend configuration.';
         }
       }
 
       if (flow == AuthFlow.sendResetPinOtp) {
         if (statusCode == 429) {
-          return 'Please wait 10 seconds before requesting another OTP.';
+          return serverError.isNotEmpty
+              ? serverError
+              : 'Please wait 2 minutes before requesting another OTP.';
         }
         if (statusCode == 404 || lower.contains('not found')) {
           return 'User not found. Please sign up first.';
+        }
+        if (lower.contains('template')) {
+          return 'WhatsApp OTP template is not ready yet. Check backend configuration.';
         }
       }
 
@@ -117,10 +136,18 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> sendSignupOtp(String phoneNumber) async {
+    final normalizedPhone = _normalizePhone(phoneNumber);
+    developer.log('AuthService: sendSignupOtp request ($normalizedPhone)',
+        name: 'AuthService');
+
     final response = await _api.post(
       ApiConfig.sendOtp,
-      data: {'phoneNumber': _normalizePhone(phoneNumber)},
+      data: {'phoneNumber': normalizedPhone},
     );
+
+    developer.log('AuthService: sendSignupOtp response: ${response.data}',
+        name: 'AuthService');
+
     return response.data;
   }
 
@@ -167,13 +194,20 @@ class AuthService {
     required String phoneNumber,
     required String pin,
   }) async {
+    final normalizedPhone = _normalizePhone(phoneNumber);
+    developer.log('AuthService: login request ($normalizedPhone)',
+        name: 'AuthService');
+
     final response = await _api.post(
       ApiConfig.login,
       data: {
-        'phoneNumber': _normalizePhone(phoneNumber),
+        'phoneNumber': normalizedPhone,
         'pin': pin,
       },
     );
+
+    developer.log('AuthService: login response: ${response.data}',
+        name: 'AuthService');
 
     final data = response.data['data'];
     final user = UserModel.fromJson(data['user']);
