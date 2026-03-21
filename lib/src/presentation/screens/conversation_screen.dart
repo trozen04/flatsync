@@ -16,6 +16,7 @@ import '../../core/widgets/shadowed_app_bar.dart';
 import '../../core/widgets/loading_indicator.dart';
 import '../../utils/money_utils.dart';
 import '../../utils/date_utils.dart';
+import '../../utils/phone_utils.dart';
 import '../widgets/contact_identity_details.dart';
 
 class ConversationScreen extends StatefulWidget {
@@ -174,11 +175,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
-  String _canonicalPhone(String? value) {
-    final digits = (value ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length > 10) return digits.substring(digits.length - 10);
-    return digits;
-  }
+  String _canonicalPhone(String? value) => PhoneUtils.canonical(value);
 
   int _resolveContactBalance(Map<String, dynamic> balances) {
     final contactId = widget.contact.contactId;
@@ -407,9 +404,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             decoration: BoxDecoration(
-              color: balanceColor.withOpacity(0.1),
+              color: balanceColor.withValues(alpha: 0.1),
               border: Border(
-                bottom: BorderSide(color: balanceColor.withOpacity(0.2)),
+                bottom: BorderSide(color: balanceColor.withValues(alpha: 0.2)),
               ),
             ),
             child: Column(
@@ -603,7 +600,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: (type == 'expense' ? AppColors.primary : (isYouPaid ? AppColors.success : AppColors.info)).withOpacity(0.1),
+                                        color: (type == 'expense' ? AppColors.primary : (isYouPaid ? AppColors.success : AppColors.info)).withValues(alpha: 0.1),
                                         borderRadius: const BorderRadius.only(
                                           topLeft: Radius.circular(11),
                                           topRight: Radius.circular(11),

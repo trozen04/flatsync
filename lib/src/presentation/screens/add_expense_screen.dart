@@ -265,7 +265,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
+        backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.35),
         resizeToAvoidBottomInset: true,
         body: RefreshIndicator(
           onRefresh: _loadLocalContacts,
@@ -332,7 +332,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                       color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.55),
+                        color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.55),
                       ),
                       boxShadow: AppShadows.card,
                     ),

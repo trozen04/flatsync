@@ -16,6 +16,7 @@ import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
 import '../../presentation/state/contact_provider.dart';
 import '../../utils/money_utils.dart';
+import '../../utils/phone_utils.dart';
 import '../widgets/contact_identity_details.dart';
 import 'conversation_screen.dart';
 
@@ -62,11 +63,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
     super.dispose();
   }
 
-  String _canonicalPhone(String value) {
-    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length > 10) return digits.substring(digits.length - 10);
-    return digits;
-  }
+  String _canonicalPhone(String value) => PhoneUtils.canonical(value);
 
   Future<void> _loadContactsLookup() async {
     final isar = context.read<IsarService>();
@@ -190,7 +187,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: _getBalanceColor(_netBalance).withOpacity(0.16),
+                      color: _getBalanceColor(_netBalance).withValues(alpha: 0.16),
                     ),
                     boxShadow: AppShadows.cardElevated,
                   ),
@@ -244,7 +241,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: _getBalanceColor(amount).withOpacity(0.1),
+                                  color: _getBalanceColor(amount).withValues(alpha: 0.1),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Center(

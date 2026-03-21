@@ -8,6 +8,7 @@ import '../../services/contact_service.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/phone_utils.dart';
 import '../../core/widgets/shadowed_app_bar.dart';
 
 class ContactSelectionScreen extends StatefulWidget {
@@ -144,30 +145,9 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
     }
   }
 
-  String _normalizePhone(String phone) {
-    // Remove all non-digit characters except +
-    String cleaned = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    // Remove + and country code, keep last 10 digits
-    String digits = cleaned.replaceAll('+', '').replaceAll(RegExp(r'^91'), '');
-    if (digits.length > 10) {
-      return digits.substring(digits.length - 10);
-    }
-    return digits;
-  }
-
-  String _canonicalPhone(String phone) {
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length > 10) {
-      return digits.substring(digits.length - 10);
-    }
-    return digits;
-  }
-
-  bool _looksLikePhoneName(String? value) {
-    if (value == null || value.trim().isEmpty) return true;
-    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    return digits.length >= 7;
-  }
+  String _normalizePhone(String phone) => PhoneUtils.normalize(phone);
+  String _canonicalPhone(String phone) => PhoneUtils.canonical(phone);
+  bool _looksLikePhoneName(String? value) => PhoneUtils.looksLikePhoneName(value);
 
   Future<void> _syncSelected() async {
     if (_selectedPhones.isEmpty) {

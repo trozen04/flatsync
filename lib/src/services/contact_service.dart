@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import '../utils/phone_utils.dart';
 import 'package:isar/isar.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:developer' as developer;
@@ -114,28 +115,9 @@ class ContactService {
     return status.isGranted;
   }
 
-  String _normalizePhone(String phone) {
-    // Remove all non-digit characters except +
-    String cleaned = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    // Remove + and country code, keep last 10 digits
-    String digits = cleaned.replaceAll('+', '').replaceAll(RegExp(r'^91'), '');
-    if (digits.length > 10) {
-      return digits.substring(digits.length - 10);
-    }
-    return digits;
-  }
-
-  String _canonicalPhone(String phone) {
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length > 10) return digits.substring(digits.length - 10);
-    return digits;
-  }
-
-  bool _looksLikePhoneName(String? value) {
-    if (value == null || value.trim().isEmpty) return true;
-    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    return digits.length >= 7;
-  }
+  String _normalizePhone(String phone) => PhoneUtils.normalize(phone);
+  String _canonicalPhone(String phone) => PhoneUtils.canonical(phone);
+  bool _looksLikePhoneName(String? value) => PhoneUtils.looksLikePhoneName(value);
 
   bool get canAttemptLookup =>
       _lookupBackoffUntil == null || DateTime.now().isAfter(_lookupBackoffUntil!);

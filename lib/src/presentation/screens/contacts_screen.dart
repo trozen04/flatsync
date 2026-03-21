@@ -16,6 +16,7 @@ import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../services/contact_service.dart';
 import '../../services/expense_service.dart';
+import '../../utils/phone_utils.dart';
 import '../../utils/custom_snackbar.dart';
 import '../widgets/contact_identity_details.dart';
 import 'contact_selection_screen.dart';
@@ -66,17 +67,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
     super.dispose();
   }
 
-  String _canonicalPhone(String? phone) {
-    final digits = (phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length > 10) return digits.substring(digits.length - 10);
-    return digits;
-  }
-
-  bool _looksLikePhoneName(String? value) {
-    if (value == null || value.trim().isEmpty) return true;
-    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    return digits.length >= 7;
-  }
+  String _canonicalPhone(String? phone) => PhoneUtils.canonical(phone);
+  bool _looksLikePhoneName(String? value) => PhoneUtils.looksLikePhoneName(value);
 
   Future<void> _refreshData({bool forceRefresh = false}) async {
     if (mounted) setState(() => _refreshing = true);
@@ -427,7 +419,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: _balanceColor(balance).withOpacity(0.1),
+                                color: _balanceColor(balance).withValues(alpha: 0.1),
                                 shape: BoxShape.circle,
                               ),
                               child: Center(

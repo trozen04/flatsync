@@ -3,6 +3,7 @@ import 'package:isar/isar.dart';
 import '../../data/models/contact_model.dart';
 import '../../data/repositories/isar_service.dart';
 import '../../services/contact_service.dart';
+import '../../utils/phone_utils.dart';
 
 class ContactProvider extends ChangeNotifier {
   final IsarService _isarService;
@@ -55,18 +56,8 @@ class ContactProvider extends ChangeNotifier {
     return null;
   }
 
-  String _canonicalPhone(String? phone) {
-    if (phone == null) return '';
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length > 10) return digits.substring(digits.length - 10);
-    return digits;
-  }
-
-  bool _looksLikePhoneName(String? value) {
-    if (value == null || value.trim().isEmpty) return true;
-    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    return digits.length >= 7;
-  }
+  String _canonicalPhone(String? phone) => PhoneUtils.canonical(phone);
+  bool _looksLikePhoneName(String? value) => PhoneUtils.looksLikePhoneName(value);
 
   String getDisplayName(String? identifier) {
     if (identifier == null || identifier.isEmpty) return 'Unknown';

@@ -11,6 +11,7 @@ import '../data/models/transaction_model.dart';
 import '../data/models/contact_model.dart';
 import '../data/repositories/isar_service.dart';
 import 'api_service.dart';
+import '../utils/phone_utils.dart';
 
 class ExpenseService {
   final ApiService _api;
@@ -65,11 +66,7 @@ class ExpenseService {
     return _secureStorage.read(key: 'user_id');
   }
 
-  String _canonicalPhone(String value) {
-    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length > 10) return digits.substring(digits.length - 10);
-    return digits;
-  }
+  String _canonicalPhone(String value) => PhoneUtils.canonical(value);
 
   bool _isFresh(DateTime? timestamp) {
     if (timestamp == null) return false;

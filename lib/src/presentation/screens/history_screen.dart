@@ -329,10 +329,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 height: 44,
                                 decoration: BoxDecoration(
                                   color: type == 'expense' 
-                                      ? AppColors.primary.withOpacity(0.12)
+                                      ? AppColors.primary.withValues(alpha: 0.12)
                                       : (direction == 'received' 
-                                          ? AppColors.success.withOpacity(0.12)
-                                          : AppColors.error.withOpacity(0.12)),
+                                          ? AppColors.success.withValues(alpha: 0.12)
+                                          : AppColors.error.withValues(alpha: 0.12)),
                                   shape: BoxShape.circle,
                                   boxShadow: AppShadows.subtle,
                                 ),
@@ -387,10 +387,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: amountColor.withOpacity(0.1),
+                                      color: amountColor.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
-                                        color: amountColor.withOpacity(0.3),
+                                        color: amountColor.withValues(alpha: 0.3),
                                         width: 1,
                                       ),
                                     ),

@@ -8,6 +8,7 @@ import '../../../core/constants/app_dimensions.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../services/auth_service.dart';
 import '../../../utils/custom_snackbar.dart';
+import '../../../utils/phone_utils.dart';
 import 'otp_verify_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -35,11 +36,7 @@ class _SignupScreenState extends State<SignupScreen> {
     _syncCountdown();
   }
 
-  String _canonicalPhone(String phone) {
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length <= 10) return digits;
-    return digits.substring(digits.length - 10);
-  }
+  String _canonicalPhone(String phone) => PhoneUtils.canonical(phone);
 
   bool get _isOtpBypassed => _canonicalPhone(_phoneNumber) == _otpBypassPhone;
 
