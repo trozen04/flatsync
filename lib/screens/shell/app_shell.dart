@@ -9,6 +9,7 @@ import '../../services/auth_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
 import '../../services/isar_service.dart';
+import '../../services/notification_service.dart';
 import '../auth/login_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../expenses/add_expense_screen.dart';
@@ -83,6 +84,7 @@ class _AppShellState extends State<AppShell> {
       });
       
       // Logout from auth service
+      await context.read<NotificationService>().unregisterDevice();
       await context.read<AuthService>().logout();
       
       if (mounted) {

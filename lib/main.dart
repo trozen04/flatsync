@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flatsync/services/isar_service.dart';
 import 'package:flatsync/services/api_service.dart';
 import 'package:flatsync/services/auth_service.dart';
 import 'package:flatsync/services/contact_service.dart';
 import 'package:flatsync/services/expense_service.dart';
+import 'package:flatsync/services/notification_service.dart';
 import 'package:flatsync/bloc/contact_provider.dart';
 import 'package:flatsync/screens/auth/login_screen.dart';
 import 'package:flatsync/screens/onboarding/onboarding_screen.dart';
@@ -15,14 +17,16 @@ import 'package:flatsync/routes/app_routes.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+  await Firebase.initializeApp();
+
   final isarService = IsarService();
   await isarService.openDB();
-  
+
   final apiService = ApiService();
   final authService = AuthService(apiService);
   final contactService = ContactService(apiService);
   final expenseService = ExpenseService(apiService, isarService);
+  final notificationService = NotificationService(apiService);
 
   // Silent server wake-up
   apiService.wakeUpServer();
@@ -35,6 +39,7 @@ Future<void> main() async {
         Provider.value(value: authService),
         Provider.value(value: contactService),
         Provider.value(value: expenseService),
+        Provider.value(value: notificationService),
         ChangeNotifierProvider(
           create: (_) => ContactProvider(isarService, contactService),
         ),

@@ -8,6 +8,7 @@ import '../../constants/app_text_styles.dart';
 import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
 import '../../services/isar_service.dart';
+import '../../services/notification_service.dart';
 import '../../utils/custom_snackbar.dart';
 import '../shell/app_shell.dart';
 import 'forgot_pin_screen.dart';
@@ -52,6 +53,11 @@ class _LoginScreenState extends State<LoginScreen> {
         contactService: context.read(),
         isar: isar,
       );
+
+      // Register FCM token and request location permission
+      final notificationService = context.read<NotificationService>();
+      await notificationService.registerDevice();
+      await notificationService.requestLocationPermission();
 
       if (mounted) {
         Navigator.pushReplacement(

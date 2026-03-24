@@ -25,6 +25,7 @@ class ApiConfig {
 
   // User profile endpoints
   static const String usersMe = '/users/me';
+  static const String usersFcmToken = '/users/me/fcm-token';
 
   // Contact endpoints
   static const String matchContacts = '/contacts/match';
