@@ -7,7 +7,7 @@ class ApiConfig {
       'https://flatsync-backend.onrender.com/api';
 
   // Development URL - Use your computer's IP address
-  static const String developmentUrl = 'http://192.168.0.51:5000/api';
+  static const String developmentUrl = 'http://192.168.1.44:5000/api';
 
   // Auto-select based on build mode
   static String get baseUrl => isProduction ? productionUrl : developmentUrl;

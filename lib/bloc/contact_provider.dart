@@ -24,7 +24,7 @@ class ContactProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final contacts = await _isarService.isar.contactModels.where().findAll();
+      final contacts = await _isarService.isar.contactModels.filter().idGreaterThan(-1).findAll();
       contacts.sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
       _contacts = contacts;
     } catch (e) {

@@ -26,16 +26,34 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
   bool _refreshing = false;
+  final Set<int> _loadedTabIndexes = <int>{0};
 
   // 0 = Add, 1 = Contacts, 2 = Balances, 3 = History, 4 = Profile
-  late final List<Widget?> _screens = List<Widget?>.filled(5, null, growable: false);
+  final List<Widget?> _screens = List<Widget?>.filled(5, null, growable: false);
+
+  void _resetScreenCache() {
+    for (var i = 0; i < _screens.length; i++) {
+      _screens[i] = null;
+    }
+    _loadedTabIndexes
+      ..clear()
+      ..add(0);
+  }
+
+  void _selectTab(int index) {
+    if (index < 0 || index >= _screens.length) return;
+    setState(() {
+      _selectedIndex = index;
+      _loadedTabIndexes.add(index);
+    });
+  }
 
   Widget _screenFor(int index) {
     return _screens[index] ??= switch (index) {
       0 => const AddExpenseScreen(),
       1 => const ContactsScreen(),
-      2 => BalancesScreen(onNavigateToAddExpense: () => setState(() => _selectedIndex = 0)),
-      3 => const HistoryScreen(),
+      2 => BalancesScreen(onNavigateToAddExpense: () => _selectTab(0)),
+      3 => HistoryScreen(onNavigateToAddExpense: () => _selectTab(0)),
       _ => const ProfileScreen(showAppBar: false),
     };
   }
@@ -52,6 +70,12 @@ class _AppShellState extends State<AppShell> {
     );
 
     if (confirmed == true && mounted) {
+      ContactsScreen.resetPersistedState();
+      setState(() {
+        _selectedIndex = 0;
+        _resetScreenCache();
+      });
+
       // Clear Isar database
       final isar = context.read<IsarService>();
       await isar.isar.writeTxn(() async {
@@ -131,9 +155,18 @@ class _AppShellState extends State<AppShell> {
         // Screens inside AppShell are full Scaffolds; reserve space so their content
         // doesn't render behind the custom bottom bar.
         padding: EdgeInsets.only(bottom: navReserved),
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: List.generate(5, _screenFor),
+        child: Stack(
+          children: [
+            for (var index = 0; index < _screens.length; index++)
+              if (_loadedTabIndexes.contains(index))
+                Offstage(
+                  offstage: _selectedIndex != index,
+                  child: TickerMode(
+                    enabled: _selectedIndex == index,
+                    child: _screenFor(index),
+                  ),
+                ),
+          ],
         ),
       ),
       bottomNavigationBar: Container(
@@ -167,7 +200,7 @@ class _AppShellState extends State<AppShell> {
                             icon: Icons.people_outline,
                             selectedIcon: Icons.people,
                             selected: _selectedIndex == 1,
-                            onTap: () => setState(() => _selectedIndex = 1),
+                            onTap: () => _selectTab(1),
                           ),
                         ),
                         Expanded(
@@ -176,7 +209,7 @@ class _AppShellState extends State<AppShell> {
                             icon: Icons.account_balance_wallet_outlined,
                             selectedIcon: Icons.account_balance_wallet,
                             selected: _selectedIndex == 2,
-                            onTap: () => setState(() => _selectedIndex = 2),
+                            onTap: () => _selectTab(2),
                           ),
                         ),
                         const SizedBox(width: 70), // space for center add button
@@ -186,7 +219,7 @@ class _AppShellState extends State<AppShell> {
                             icon: Icons.history,
                             selectedIcon: Icons.history,
                             selected: _selectedIndex == 3,
-                            onTap: () => setState(() => _selectedIndex = 3),
+                            onTap: () => _selectTab(3),
                           ),
                         ),
                         Expanded(
@@ -195,7 +228,7 @@ class _AppShellState extends State<AppShell> {
                             icon: Icons.person_outline,
                             selectedIcon: Icons.person,
                             selected: _selectedIndex == 4,
-                            onTap: () => setState(() => _selectedIndex = 4),
+                            onTap: () => _selectTab(4),
                           ),
                         ),
                       ],
@@ -212,7 +245,7 @@ class _AppShellState extends State<AppShell> {
                       elevation: 6,
                       backgroundColor: scheme.primary,
                       foregroundColor: scheme.onPrimary,
-                      onPressed: () => setState(() => _selectedIndex = 0),
+                      onPressed: () => _selectTab(0),
                       child: const Icon(Icons.add, size: 30),
                     ),
                   ),
@@ -272,4 +305,3 @@ class _BottomNavItem extends StatelessWidget {
     );
   }
 }
-

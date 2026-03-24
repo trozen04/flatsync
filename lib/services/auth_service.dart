@@ -6,6 +6,9 @@ import 'dart:developer' as developer;
 import '../models/user_model.dart';
 import '../constants/api_config.dart';
 import 'api_service.dart';
+import 'contact_service.dart';
+import 'expense_service.dart';
+import 'isar_service.dart';
 
 enum AuthFlow {
   login,
@@ -278,9 +281,20 @@ class AuthService {
     _api.clearToken();
   }
 
-  Future<void> syncContactsOnLogin() async {
-    // This will be called after successful login to auto-populate contacts
-    // from users who have transactions/balances with current user
+  Future<void> syncContactsOnLogin({
+    required ExpenseService expenseService,
+    required ContactService contactService,
+    required IsarService isar,
+  }) async {
+    final balances = await expenseService.getBalances(forceRefresh: true);
+    if (balances.isNotEmpty) {
+      final contacts = expenseService.getCachedBalanceContacts();
+      if (contacts.isNotEmpty) {
+        await contactService.upsertContactsByCanonical(isar, contacts);
+        contactService.notifyUpdate();
+      }
+    }
+    await expenseService.getExpenses(forceRefresh: true);
   }
 
   Future<bool> isLoggedIn() async {

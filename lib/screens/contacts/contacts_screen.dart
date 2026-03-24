@@ -3,7 +3,6 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
-import 'package:isar/isar.dart';
 import 'package:provider/provider.dart';
 
 import '../../constants/app_dimensions.dart';
@@ -25,6 +24,12 @@ import 'conversation_screen.dart';
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
 
+  static String persistedQuery = '';
+
+  static void resetPersistedState() {
+    persistedQuery = '';
+  }
+
   @override
   State<ContactsScreen> createState() => _ContactsScreenState();
 }
@@ -32,21 +37,33 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   List<ContactModel> _contacts = [];
   Map<String, int> _balances = {};
+  Map<String, int> _balancesByCanonicalPhone = {};
 
   bool _refreshing = false;
   bool _syncing = false;
+  bool _loadingMoreContacts = false;
+  bool _hasMoreContacts = true;
+  int _contactsOffset = 0;
+  bool _contactsLoadInProgress = false;
+  bool _pendingResetAfterLoad = false;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   String _query = '';
+  Timer? _searchDebounce;
 
   StreamSubscription<int>? _updatesSub;
   StreamSubscription<int>? _contactUpdatesSub;
   static const double _currencyDivisor = 100.0;
+  static const int _pageSize = 40;
   bool _isReconciling = false;
   DateTime? _lastReconcileAt;
 
   @override
   void initState() {
     super.initState();
+    _query = ContactsScreen.persistedQuery;
+    _searchController.text = ContactsScreen.persistedQuery;
+    _scrollController.addListener(_onScroll);
     unawaited(_refreshData(forceRefresh: false));
     _updatesSub = context.read<ExpenseService>().updates.listen((_) {
       if (mounted) _loadBalances(forceRefresh: true);
@@ -54,14 +71,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
     // Listen to contact updates
     _contactUpdatesSub = context.read<ContactService>().updates.listen((_) {
       if (mounted) {
-        _loadLocalContacts();
+        _loadLocalContacts(reset: true);
       }
     });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     _updatesSub?.cancel();
     _contactUpdatesSub?.cancel();
     super.dispose();
@@ -70,21 +89,77 @@ class _ContactsScreenState extends State<ContactsScreen> {
   String _canonicalPhone(String? phone) => PhoneUtils.canonical(phone);
   bool _looksLikePhoneName(String? value) => PhoneUtils.looksLikePhoneName(value);
 
+  void _onScroll() {
+    if (!_scrollController.hasClients || _loadingMoreContacts || !_hasMoreContacts) {
+      return;
+    }
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 240) {
+      unawaited(_loadLocalContacts());
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    setState(() {
+      _query = value;
+      ContactsScreen.persistedQuery = value;
+    });
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) {
+        unawaited(_loadLocalContacts(reset: true));
+      }
+    });
+  }
+
   Future<void> _refreshData({bool forceRefresh = false}) async {
     if (mounted) setState(() => _refreshing = true);
-    await _loadLocalContacts();
+    await _loadLocalContacts(reset: true);
     await _loadBalances(forceRefresh: forceRefresh);
     if (!mounted) return;
     setState(() => _refreshing = false);
   }
 
-  Future<void> _loadLocalContacts() async {
+  Future<void> _loadLocalContacts({bool reset = false}) async {
+    if (_contactsLoadInProgress) {
+      if (reset) {
+        _pendingResetAfterLoad = true;
+        if (mounted) {
+          setState(() => _refreshing = true);
+        }
+      }
+      return;
+    }
     try {
-      final isar = context.read<IsarService>();
-      final contacts = await isar.isar.contactModels.where().findAll();
-      contacts.sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
+      final isarService = context.read<IsarService>();
+      final requestQuery = _query;
+      final int nextOffset = reset ? 0 : _contactsOffset;
+      if (!reset && !_hasMoreContacts) return;
+      _contactsLoadInProgress = true;
+
+      if (mounted) {
+        setState(() {
+          if (reset) {
+            _refreshing = true;
+          } else {
+            _loadingMoreContacts = true;
+          }
+        });
+      }
+
+      final contacts = await isarService.getContactsPage(
+        offset: nextOffset,
+        limit: _pageSize,
+        query: requestQuery,
+      );
       if (!mounted) return;
-      setState(() => _contacts = contacts);
+      if (_pendingResetAfterLoad && !reset) return;
+      if (requestQuery != _query) return;
+      setState(() {
+        _contacts = reset ? contacts : [..._contacts, ...contacts];
+        _contactsOffset = nextOffset + contacts.length;
+        _hasMoreContacts = contacts.length == _pageSize;
+      });
 
       // Non-blocking background reconciliation for contact IDs.
       final shouldReconcile = !_isReconciling &&
@@ -97,6 +172,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
     } catch (e) {
       developer.log('Load local contacts error: $e');
+    } finally {
+      _contactsLoadInProgress = false;
+      if (_pendingResetAfterLoad) {
+        _pendingResetAfterLoad = false;
+        if (mounted) {
+          unawaited(_loadLocalContacts(reset: true));
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _refreshing = false;
+        _loadingMoreContacts = false;
+      });
     }
   }
 
@@ -126,7 +215,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       if (updated.isNotEmpty) {
         await contactService.upsertContactsByCanonical(isar, updated);
-        await _loadLocalContacts();
+        await _loadLocalContacts(reset: true);
       }
     } finally {
       _isReconciling = false;
@@ -138,11 +227,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
       final expenseService = context.read<ExpenseService>();
       final raw = await expenseService.getBalances(forceRefresh: forceRefresh);
       final normalized = <String, int>{};
+      final normalizedByCanonicalPhone = <String, int>{};
       raw.forEach((k, v) {
-        normalized[k.toString()] = (v as num).round();
+        final key = k.toString();
+        final amount = (v as num).round();
+        normalized[key] = amount;
+        final canonicalPhone = _canonicalPhone(key);
+        if (canonicalPhone.isNotEmpty) {
+          normalizedByCanonicalPhone.putIfAbsent(canonicalPhone, () => amount);
+        }
       });
       if (!mounted) return;
-      setState(() => _balances = normalized);
+      setState(() {
+        _balances = normalized;
+        _balancesByCanonicalPhone = normalizedByCanonicalPhone;
+      });
     } catch (e) {
       developer.log('Load contact balances error: $e');
     }
@@ -153,10 +252,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     if (byId != null) return byId;
 
     final phoneKey = _canonicalPhone(c.phoneNumber);
-    for (final entry in _balances.entries) {
-      if (_canonicalPhone(entry.key) == phoneKey) return entry.value;
-    }
-    return 0;
+    return _balancesByCanonicalPhone[phoneKey] ?? 0;
   }
 
   String _balanceText(int amount) {
@@ -309,6 +405,45 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_contacts.isEmpty && _query.trim().isNotEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Padding(
+          padding: AppDimensions.appMargin(context),
+          child: Column(
+            children: [
+              LoadingIndicator(isLoading: _syncing || _refreshing),
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search contacts',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                ),
+                onChanged: _onSearchChanged,
+              ),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    'No contacts match your search',
+                    style: AppTextStyles.bodyMedium(context),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_contacts.isEmpty) {
       return Padding(
         padding: AppDimensions.appMargin(context),
@@ -354,15 +489,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       );
     }
 
-    final filtered = _query.trim().isEmpty
-        ? _contacts
-        : _contacts.where((c) {
-            final q = _query.trim().toLowerCase();
-            final name = (c.name ?? '').toLowerCase();
-            final phone = (c.phoneNumber ?? '').toLowerCase();
-            return name.contains(q) || phone.contains(q);
-          }).toList();
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: Padding(
@@ -380,21 +506,29 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     : IconButton(
                         onPressed: () {
                           _searchController.clear();
-                          setState(() => _query = '');
+                          _onSearchChanged('');
                         },
                         icon: const Icon(Icons.close),
                       ),
               ),
-              onChanged: (v) => setState(() => _query = v),
+              onChanged: _onSearchChanged,
             ),
             AppDimensions.h20(context),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () => _refreshData(forceRefresh: true),
                 child: ListView.builder(
-                  itemCount: filtered.length,
+                  controller: _scrollController,
+                  itemCount: _contacts.length + (_loadingMoreContacts ? 1 : 0),
                   itemBuilder: (context, index) {
-                    final contact = filtered[index];
+                    if (index >= _contacts.length) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+
+                    final contact = _contacts[index];
                     final balance = _balanceForContact(contact);
 
                     return Container(
@@ -472,4 +606,3 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 }
-

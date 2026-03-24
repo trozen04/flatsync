@@ -169,7 +169,7 @@ class ContactService {
   Future<void> upsertContactsByCanonical(IsarService isar, List<ContactModel> incoming) async {
     if (incoming.isEmpty) return;
 
-    final existing = await isar.isar.contactModels.where().findAll();
+    final existing = await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
     final existingByCanonical = <String, ContactModel>{};
 
     // Build map with best candidate if duplicates already exist.
@@ -207,7 +207,7 @@ class ContactService {
       }
 
       // Cleanup already-duplicated rows sharing same canonical phone.
-      final latestAll = await isar.isar.contactModels.where().findAll();
+      final latestAll = await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
       final keeperByCanonical = <String, ContactModel>{};
       final deleteIds = <Id>{};
       for (final c in latestAll) {

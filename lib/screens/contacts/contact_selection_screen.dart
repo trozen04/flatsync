@@ -128,7 +128,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
   Future<Set<String>> _loadPreviouslyAddedPhones(List<Contact> deviceContacts) async {
     try {
       final isar = context.read<IsarService>();
-      final savedContacts = await isar.isar.contactModels.where().findAll();
+      final savedContacts = await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
       if (savedContacts.isEmpty) return <String>{};
 
       final savedCanonicalPhones = savedContacts
@@ -320,4 +320,3 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
     );
   }
 }
-

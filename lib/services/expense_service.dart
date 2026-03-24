@@ -23,6 +23,8 @@ class ExpenseService {
   static const String _recentAmountsStorageKey = 'recent_amounts_paise_v1';
   static const String _transactionsStorageKey = 'offline_cached_transactions_v1';
   static const int _maxRecentAmounts = 8;
+  static const int _maxConversationCacheEntries = 24;
+  static const int _maxTimelineCacheEntries = 24;
 
   final StreamController<int> _updatesController = StreamController<int>.broadcast();
   int _revision = 0;
@@ -43,6 +45,8 @@ class ExpenseService {
   final Map<String, DateTime> _conversationCacheAt = {};
   final Map<String, List<Map<String, dynamic>>> _timelineCache = {};
   final Map<String, DateTime> _timelineCacheAt = {};
+  Future<Map<String, dynamic>>? _balancesInFlight;
+  Future<Map<String, dynamic>>? _forceRefreshBalancesInFlight;
 
   SharedPreferences? _prefs;
 
@@ -93,6 +97,51 @@ class ExpenseService {
     _conversationCacheAt.clear();
     _timelineCache.clear();
     _timelineCacheAt.clear();
+  }
+
+  void _evictTimedCacheEntries<T>(
+    Map<String, T> cache,
+    Map<String, DateTime> timestamps,
+    int maxEntries,
+  ) {
+    final staleKeys = timestamps.entries
+        .where((entry) => !_isFresh(entry.value))
+        .map((entry) => entry.key)
+        .toList();
+    for (final key in staleKeys) {
+      cache.remove(key);
+      timestamps.remove(key);
+    }
+
+    if (timestamps.length <= maxEntries) return;
+
+    final sortedKeys = timestamps.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    final overflow = sortedKeys.length - maxEntries;
+    for (final entry in sortedKeys.take(overflow)) {
+      cache.remove(entry.key);
+      timestamps.remove(entry.key);
+    }
+  }
+
+  void _storeConversationCache(String key, List<dynamic> items) {
+    _conversationCache[key] = List<dynamic>.unmodifiable(items);
+    _conversationCacheAt[key] = DateTime.now();
+    _evictTimedCacheEntries(
+      _conversationCache,
+      _conversationCacheAt,
+      _maxConversationCacheEntries,
+    );
+  }
+
+  void _storeTimelineCache(String key, List<Map<String, dynamic>> items) {
+    _timelineCache[key] = List<Map<String, dynamic>>.unmodifiable(items);
+    _timelineCacheAt[key] = DateTime.now();
+    _evictTimedCacheEntries(
+      _timelineCache,
+      _timelineCacheAt,
+      _maxTimelineCacheEntries,
+    );
   }
 
   List<ContactModel> getCachedBalanceContacts() {
@@ -361,6 +410,43 @@ class ExpenseService {
       return _balancesCache!;
     }
 
+    if (forceRefresh) {
+      if (_forceRefreshBalancesInFlight != null) {
+        return _forceRefreshBalancesInFlight!;
+      }
+
+      final future = _fetchBalances(forceRefresh: true);
+      _forceRefreshBalancesInFlight = future;
+      try {
+        return await future;
+      } finally {
+        if (identical(_forceRefreshBalancesInFlight, future)) {
+          _forceRefreshBalancesInFlight = null;
+        }
+      }
+    }
+
+    if (_forceRefreshBalancesInFlight != null) {
+      return _forceRefreshBalancesInFlight!;
+    }
+    if (_balancesInFlight != null) {
+      return _balancesInFlight!;
+    }
+
+    final future = _fetchBalances(forceRefresh: false);
+    _balancesInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_balancesInFlight, future)) {
+        _balancesInFlight = null;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetchBalances({
+    required bool forceRefresh,
+  }) async {
     // Prefer server truth; keep persisted balances only as an offline fallback.
     final localFallback = (!forceRefresh) ? await _readPersistedBalances() : <String, dynamic>{};
 
@@ -462,15 +548,15 @@ class ExpenseService {
       final paidByMatch = expense.paidBy == userId || _canonicalPhone(expense.paidBy) == _canonicalPhone(userId);
       if (!participantMatch && !paidByMatch) continue;
 
-      final youPaid = !paidByMatch;
+      final direction = paidByMatch ? 'they_paid' : 'you_paid';
       final splitCount = expense.participants.length + 1;
       final amount = splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
 
       timeline.add({
         'type': 'expense',
         'amount': amount,
-        'signedAmount': youPaid ? amount : -amount,
-        'direction': youPaid ? 'you_paid' : 'they_paid',
+        'signedAmount': direction == 'you_paid' ? amount : -amount,
+        'direction': direction,
         'description': expense.description ?? 'Expense',
         'createdAt': expense.createdAt.toUtc().toIso8601String(),
       });
@@ -514,6 +600,11 @@ class ExpenseService {
     final safePage = page < 1 ? 1 : page;
     final safeLimit = limit < 1 ? 20 : limit;
     final cacheKey = 'id:$userId:p$safePage:l$safeLimit';
+    _evictTimedCacheEntries(
+      _conversationCache,
+      _conversationCacheAt,
+      _maxConversationCacheEntries,
+    );
     if (!forceRefresh &&
         _conversationCache.containsKey(cacheKey) &&
         _isFresh(_conversationCacheAt[cacheKey])) {
@@ -527,8 +618,7 @@ class ExpenseService {
       final data = response.data['data'];
       if (data is! Map<String, dynamic>) {
         final local = await _localConversationById(userId, page: safePage, limit: safeLimit);
-        _conversationCache[cacheKey] = local;
-        _conversationCacheAt[cacheKey] = DateTime.now();
+        _storeConversationCache(cacheKey, local);
         return local;
       }
 
@@ -604,16 +694,14 @@ class ExpenseService {
         unawaited(_persistTransactions(updated));
       }
 
-      _conversationCache[cacheKey] = timeline;
-      _conversationCacheAt[cacheKey] = DateTime.now();
+      _storeConversationCache(cacheKey, timeline);
       return timeline;
     } catch (e) {
       if (_conversationCache.containsKey(cacheKey)) {
         return _conversationCache[cacheKey]!;
       }
       final local = await _localConversationById(userId, page: safePage, limit: safeLimit);
-      _conversationCache[cacheKey] = local;
-      _conversationCacheAt[cacheKey] = DateTime.now();
+      _storeConversationCache(cacheKey, local);
       return local;
     }
   }
@@ -628,6 +716,11 @@ class ExpenseService {
     final keyUser = (withUserId ?? 'all').trim();
     final keyCursor = (cursor ?? '').trim();
     final cacheKey = 'with:$keyUser:c:$keyCursor:l$safeLimit';
+    _evictTimedCacheEntries(
+      _timelineCache,
+      _timelineCacheAt,
+      _maxTimelineCacheEntries,
+    );
 
     if (!forceRefresh &&
         _timelineCache.containsKey(cacheKey) &&
@@ -663,8 +756,7 @@ class ExpenseService {
       final nextCursor = data['cursor']?.toString();
       final hasMore = (data['hasMore'] is bool) ? (data['hasMore'] as bool) : parsed.length >= safeLimit;
 
-      _timelineCache[cacheKey] = parsed;
-      _timelineCacheAt[cacheKey] = DateTime.now();
+      _storeTimelineCache(cacheKey, parsed);
       return TimelinePage(items: parsed, nextCursor: nextCursor, hasMore: hasMore);
     } catch (e) {
       if (_timelineCache.containsKey(cacheKey)) {
@@ -679,6 +771,11 @@ class ExpenseService {
     final target = _canonicalPhone(phoneNumber);
     if (target.isEmpty) return [];
     final cacheKey = 'phone:$target';
+    _evictTimedCacheEntries(
+      _conversationCache,
+      _conversationCacheAt,
+      _maxConversationCacheEntries,
+    );
 
     if (!forceRefresh &&
         _conversationCache.containsKey(cacheKey) &&
@@ -695,15 +792,15 @@ class ExpenseService {
 
       if (!participantMatch && !paidByMatch) continue;
 
-      final youPaid = !paidByMatch;
+      final direction = paidByMatch ? 'they_paid' : 'you_paid';
       final splitCount = expense.participants.length + 1;
       final amount = splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
 
       timeline.add({
         'type': 'expense',
         'amount': amount,
-        'signedAmount': youPaid ? amount : -amount,
-        'direction': youPaid ? 'you_paid' : 'they_paid',
+        'signedAmount': direction == 'you_paid' ? amount : -amount,
+        'direction': direction,
         'description': expense.description ?? 'Expense',
         'createdAt': expense.createdAt.toUtc().toIso8601String(),
       });
@@ -714,8 +811,7 @@ class ExpenseService {
           .compareTo(DateTime.parse(a['createdAt'] as String)),
     );
 
-    _conversationCache[cacheKey] = timeline;
-    _conversationCacheAt[cacheKey] = DateTime.now();
+    _storeConversationCache(cacheKey, timeline);
     return timeline;
   }
 

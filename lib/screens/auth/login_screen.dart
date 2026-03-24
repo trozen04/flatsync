@@ -7,8 +7,6 @@ import '../../constants/app_dimensions.dart';
 import '../../constants/app_text_styles.dart';
 import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
-import '../../services/expense_service.dart';
-import '../../services/contact_service.dart';
 import '../../services/isar_service.dart';
 import '../../utils/custom_snackbar.dart';
 import '../shell/app_shell.dart';
@@ -27,20 +25,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _pinController = TextEditingController();
   bool _loading = false;
   bool _obscurePin = true;
-
-  Future<void> _syncAfterLogin(IsarService isar) async {
-    final expenseService = context.read<ExpenseService>();
-    final contactService = context.read<ContactService>();
-    final balances = await expenseService.getBalances(forceRefresh: true);
-    if (balances.isNotEmpty) {
-      final contacts = expenseService.getCachedBalanceContacts();
-      if (contacts.isNotEmpty) {
-        await contactService.upsertContactsByCanonical(isar, contacts);
-        contactService.notifyUpdate();
-      }
-    }
-    await expenseService.getExpenses(forceRefresh: true);
-  }
 
   Future<void> _login() async {
     if (_phoneNumber.isEmpty || _pinController.text.isEmpty) {
@@ -63,7 +47,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await isar.replaceCurrentUser(user);
 
-      await _syncAfterLogin(isar);
+      await authService.syncContactsOnLogin(
+        expenseService: context.read(),
+        contactService: context.read(),
+        isar: isar,
+      );
 
       if (mounted) {
         Navigator.pushReplacement(

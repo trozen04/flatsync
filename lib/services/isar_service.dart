@@ -7,6 +7,12 @@ import 'package:path_provider/path_provider.dart';
 class IsarService {
   late Isar isar;
 
+  int _compareContactsByName(ContactModel a, ContactModel b) {
+    final aName = (a.name ?? '').trim().toLowerCase();
+    final bName = (b.name ?? '').trim().toLowerCase();
+    return aName.compareTo(bName);
+  }
+
   Future<void> openDB() async {
     final dir = await getApplicationDocumentsDirectory();
     isar = await Isar.open(
@@ -127,6 +133,34 @@ class IsarService {
 
   Future<int> getExpenseCount() async {
     return await isar.expenseModels.count();
+  }
+
+  Future<List<ContactModel>> getContactsPage({
+    required int offset,
+    required int limit,
+    String query = '',
+  }) async {
+    final safeOffset = offset < 0 ? 0 : offset;
+    final safeLimit = limit < 1 ? 25 : limit;
+    final trimmedQuery = query.trim();
+    final searchTerm = trimmedQuery.toLowerCase();
+    final allContacts = await isar.contactModels.filter().idGreaterThan(-1).findAll();
+
+    final filtered = trimmedQuery.isEmpty
+        ? allContacts
+        : allContacts.where((contact) {
+            final name = (contact.name ?? '').toLowerCase();
+            final phone = (contact.phoneNumber ?? '').toLowerCase();
+            return name.contains(searchTerm) || phone.contains(searchTerm);
+          }).toList();
+
+    filtered.sort(_compareContactsByName);
+
+    if (safeOffset >= filtered.length) return <ContactModel>[];
+    final end = (safeOffset + safeLimit) > filtered.length
+        ? filtered.length
+        : (safeOffset + safeLimit);
+    return filtered.sublist(safeOffset, end);
   }
 
   Future<void> close() async {

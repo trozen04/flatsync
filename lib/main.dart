@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flatsync/services/isar_service.dart';
 import 'package:flatsync/services/api_service.dart';
 import 'package:flatsync/services/auth_service.dart';
@@ -7,6 +8,7 @@ import 'package:flatsync/services/contact_service.dart';
 import 'package:flatsync/services/expense_service.dart';
 import 'package:flatsync/bloc/contact_provider.dart';
 import 'package:flatsync/screens/auth/login_screen.dart';
+import 'package:flatsync/screens/onboarding/onboarding_screen.dart';
 import 'package:flatsync/screens/shell/app_shell.dart';
 import 'package:flatsync/constants/app_theme.dart';
 import 'package:flatsync/routes/app_routes.dart';
@@ -42,8 +44,35 @@ Future<void> main() async {
   );
 }
 
-class FlatSyncApp extends StatelessWidget {
+class FlatSyncApp extends StatefulWidget {
   const FlatSyncApp({super.key});
+
+  @override
+  State<FlatSyncApp> createState() => _FlatSyncAppState();
+}
+
+class _FlatSyncAppState extends State<FlatSyncApp> {
+  late final Future<_LaunchDestination> _launchDestinationFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _launchDestinationFuture = _resolveLaunchDestination();
+  }
+
+  Future<_LaunchDestination> _resolveLaunchDestination() async {
+    final authService = context.read<AuthService>();
+    final prefs = await SharedPreferences.getInstance();
+
+    final isLoggedIn = await authService.isLoggedIn();
+    final hasSeenOnboarding =
+        prefs.getBool(OnboardingScreen.seenKey) ?? false;
+
+    return _LaunchDestination(
+      isLoggedIn: isLoggedIn,
+      hasSeenOnboarding: hasSeenOnboarding,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,20 +81,35 @@ class FlatSyncApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       themeMode: ThemeMode.light,
       routes: AppRoutes.routes,
-      home: FutureBuilder<bool>(
-        future: context.read<AuthService>().isLoggedIn(),
+      home: FutureBuilder<_LaunchDestination>(
+        future: _launchDestinationFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
-          return snapshot.data == true
-              ? const AppShell()
-              : const LoginScreen();
+          final launch = snapshot.data;
+          if (launch?.isLoggedIn == true) {
+            return const AppShell();
+          }
+          if (launch?.hasSeenOnboarding == true) {
+            return const LoginScreen();
+          }
+          return const OnboardingScreen();
         },
       ),
     );
   }
+}
+
+class _LaunchDestination {
+  const _LaunchDestination({
+    required this.isLoggedIn,
+    required this.hasSeenOnboarding,
+  });
+
+  final bool isLoggedIn;
+  final bool hasSeenOnboarding;
 }
 

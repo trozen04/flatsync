@@ -16,7 +16,9 @@ import '../../constants/app_shadows.dart';
 import '../../utils/date_utils.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final VoidCallback? onNavigateToAddExpense;
+
+  const HistoryScreen({super.key, this.onNavigateToAddExpense});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -167,6 +169,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       Text(
                         'Your transaction history will appear here',
                         style: AppTextStyles.bodyMedium(context),
+                      ),
+                      AppDimensions.h20(context),
+                      FilledButton.icon(
+                        onPressed: widget.onNavigateToAddExpense,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Expense'),
                       ),
                     ],
                   ),
@@ -425,4 +433,3 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
-

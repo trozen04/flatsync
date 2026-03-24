@@ -5,8 +5,6 @@ import 'dart:developer' as developer;
 import '../../constants/app_dimensions.dart';
 import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
-import '../../services/expense_service.dart';
-import '../../services/contact_service.dart';
 import '../../services/isar_service.dart';
 import '../../utils/custom_snackbar.dart';
 import '../shell/app_shell.dart';
@@ -32,20 +30,6 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
   bool _loading = false;
   bool _obscurePin = true;
 
-  Future<void> _syncAfterLogin(IsarService isar) async {
-    final expenseService = context.read<ExpenseService>();
-    final contactService = context.read<ContactService>();
-    final balances = await expenseService.getBalances(forceRefresh: true);
-    if (balances.isNotEmpty) {
-      final contacts = expenseService.getCachedBalanceContacts();
-      if (contacts.isNotEmpty) {
-        await contactService.upsertContactsByCanonical(isar, contacts);
-        contactService.notifyUpdate();
-      }
-    }
-    await expenseService.getExpenses(forceRefresh: true);
-  }
-
   Future<void> _verify() async {
     if (_otpController.text.isEmpty || _nameController.text.isEmpty || _pinController.text.isEmpty) {
       CustomSnackBar.show(context, message: 'Fill all fields', isError: true);
@@ -66,7 +50,11 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
       final isar = context.read<IsarService>();
       await isar.replaceCurrentUser(user);
 
-      await _syncAfterLogin(isar);
+      await authService.syncContactsOnLogin(
+        expenseService: context.read(),
+        contactService: context.read(),
+        isar: isar,
+      );
 
       if (mounted) {
         Navigator.pushAndRemoveUntil(

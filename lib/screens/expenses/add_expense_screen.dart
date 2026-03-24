@@ -3,7 +3,6 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:isar/isar.dart';
 import 'package:provider/provider.dart';
 
 import '../../constants/app_dimensions.dart';
@@ -31,15 +30,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final _descController = TextEditingController();
   final _amountController = TextEditingController();
 
-  List<ContactModel> _contacts = [];
+  final Map<String, ContactModel> _contactsByPhone = {};
   final List<String> _selectedParticipants = [];
   List<int> _recentAmountsPaise = [];
 
+  bool _hasContacts = false;
   bool _loadingContacts = true;
   bool _submitting = false;
   StreamSubscription<int>? _expenseUpdatesSub;
   StreamSubscription<int>? _contactUpdatesSub;
+  Future<void>? _contactsLoadInFlight;
   DateTime? _lastBalanceContactSyncAt;
+  static const int _previewContactsPageSize = 40;
 
   @override
   void initState() {
@@ -70,60 +72,87 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   ContactModel? _contactByPhone(String phone) {
-    for (final c in _contacts) {
-      if ((c.phoneNumber ?? '') == phone) return c;
-    }
-    return null;
+    return _contactsByPhone[phone];
   }
 
   Future<void> _openParticipantPicker() async {
-    final picked = await showModalBottomSheet<List<String>>(
+    final picked = await showModalBottomSheet<List<ContactModel>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (ctx) {
         return _ParticipantPickerSheet(
-          contacts: _contacts,
           initiallySelected: _selectedParticipants,
+          initiallySelectedContacts: _selectedParticipants
+              .map((phone) => _contactsByPhone[phone])
+              .whereType<ContactModel>()
+              .toList(),
           onAddContacts: () async {
-            Navigator.pop(ctx, null); // close sheet first
+            Navigator.pop(ctx, null);
             await Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const ContactSelectionScreen()),
             );
             await _loadLocalContacts();
-            if (mounted) _openParticipantPicker(); // re-open with fresh contacts
+            if (mounted) _openParticipantPicker();
           },
         );
       },
     );
 
     if (!mounted || picked == null) return;
+    final phones = <String>[];
+    for (final contact in picked) {
+      final phone = contact.phoneNumber;
+      if (phone == null || phone.isEmpty) continue;
+      _contactsByPhone[phone] = contact;
+      phones.add(phone);
+    }
     setState(() {
       _selectedParticipants
         ..clear()
-        ..addAll(picked);
+        ..addAll(phones);
     });
   }
 
   Future<void> _loadLocalContacts({bool showLoader = true}) async {
     if (!mounted) return;
+    if (_contactsLoadInFlight != null) {
+      return _contactsLoadInFlight!;
+    }
     if (showLoader) {
       setState(() => _loadingContacts = true);
     }
 
-    try {
-      final isar = context.read<IsarService>();
-      final allContacts = await isar.isar.contactModels.where().findAll();
-      allContacts.sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
-      if (mounted) setState(() => _contacts = allContacts);
-    } catch (e) {
-      developer.log('Load contacts error: $e');
-    } finally {
-      if (showLoader && mounted) {
-        setState(() => _loadingContacts = false);
+    final future = (() async {
+      try {
+        final previewContacts = await context.read<IsarService>().getContactsPage(
+          offset: 0,
+          limit: _previewContactsPageSize,
+        );
+        if (mounted) {
+          setState(() {
+            _hasContacts = previewContacts.isNotEmpty;
+            for (final contact in previewContacts) {
+              final phone = contact.phoneNumber;
+              if (phone == null || phone.isEmpty) continue;
+              _contactsByPhone[phone] = contact;
+            }
+          });
+        }
+      } catch (e) {
+        developer.log('Load contacts error: $e');
+      } finally {
+        if (showLoader && mounted) {
+          setState(() => _loadingContacts = false);
+        }
       }
+    })();
+    _contactsLoadInFlight = future;
+    await future;
+    if (identical(_contactsLoadInFlight, future)) {
+      _contactsLoadInFlight = null;
     }
   }
 
@@ -220,7 +249,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_contacts.isEmpty) {
+    if (!_hasContacts) {
       return RefreshIndicator(
         onRefresh: _loadLocalContacts,
         child: Padding(
@@ -410,13 +439,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 }
 
 class _ParticipantPickerSheet extends StatefulWidget {
-  final List<ContactModel> contacts;
   final List<String> initiallySelected;
+  final List<ContactModel> initiallySelectedContacts;
   final VoidCallback onAddContacts;
 
   const _ParticipantPickerSheet({
-    required this.contacts,
     required this.initiallySelected,
+    required this.initiallySelectedContacts,
     required this.onAddContacts,
   });
 
@@ -426,26 +455,140 @@ class _ParticipantPickerSheet extends StatefulWidget {
 
 class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, ContactModel> _selectedContactsByPhone = {};
+  final List<ContactModel> _contacts = [];
   String _query = '';
   late final List<String> _selected = List<String>.from(widget.initiallySelected);
+  bool _loading = true;
+  bool _loadingMore = false;
+  bool _loadInProgress = false;
+  bool _pendingResetAfterLoad = false;
+  bool _hasMore = true;
+  int _offset = 0;
+
+  static const int _pageSize = 40;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final contact in widget.initiallySelectedContacts) {
+      final phone = contact.phoneNumber;
+      if (phone != null && phone.isNotEmpty) {
+        _selectedContactsByPhone[phone] = contact;
+      }
+    }
+    _scrollController.addListener(_onScroll);
+    unawaited(_loadContacts(reset: true));
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients || _loadingMore || !_hasMore) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 220) {
+      unawaited(_loadContacts());
+    }
+  }
+
+  Future<void> _loadContacts({bool reset = false}) async {
+    if (_loadInProgress) {
+      if (reset) {
+        _pendingResetAfterLoad = true;
+        if (mounted) {
+          setState(() => _loading = true);
+        }
+      }
+      return;
+    }
+    final requestQuery = _query;
+    final int nextOffset = reset ? 0 : _offset;
+    if (!reset && !_hasMore) return;
+    _loadInProgress = true;
+
+    if (mounted) {
+      setState(() {
+        if (reset) {
+          _loading = true;
+        } else {
+          _loadingMore = true;
+        }
+      });
+    }
+
+    try {
+      final page = await context.read<IsarService>().getContactsPage(
+        offset: nextOffset,
+        limit: _pageSize,
+        query: requestQuery,
+      );
+      if (!mounted) return;
+      if (_pendingResetAfterLoad && !reset) return;
+      if (requestQuery != _query) return;
+      setState(() {
+        if (reset) {
+          _contacts
+            ..clear()
+            ..addAll(page);
+        } else {
+          _contacts.addAll(page);
+        }
+        _offset = nextOffset + page.length;
+        _hasMore = page.length == _pageSize;
+      });
+    } finally {
+      _loadInProgress = false;
+      if (_pendingResetAfterLoad) {
+        _pendingResetAfterLoad = false;
+        if (mounted) {
+          unawaited(_loadContacts(reset: true));
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
+    }
+  }
+
+  void _toggleSelection(ContactModel contact) {
+    final phone = contact.phoneNumber;
+    if (phone == null || phone.isEmpty) return;
+    setState(() {
+      if (_selected.contains(phone)) {
+        _selected.remove(phone);
+        _selectedContactsByPhone.remove(phone);
+      } else {
+        _selected.add(phone);
+        _selectedContactsByPhone[phone] = contact;
+      }
+    });
+  }
+
+  List<ContactModel> _buildSelectionResult() {
+    return _selected
+        .map(
+          (phone) => _selectedContactsByPhone[phone] ??
+              _contacts.firstWhere(
+                (contact) => contact.phoneNumber == phone,
+                orElse: () => ContactModel(phoneNumber: phone, name: phone),
+              ),
+        )
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
-    final filtered = _query.trim().isEmpty
-        ? widget.contacts
-        : widget.contacts.where((c) {
-            final q = _query.trim().toLowerCase();
-            return (c.name ?? '').toLowerCase().contains(q) ||
-                (c.phoneNumber ?? '').toLowerCase().contains(q);
-          }).toList();
 
     return Padding(
       padding: EdgeInsets.only(bottom: viewInsets),
@@ -479,7 +622,7 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                     label: const Text('Add'),
                   ),
                   TextButton(
-                    onPressed: () => Navigator.pop(context, _selected),
+                    onPressed: () => Navigator.pop(context, _buildSelectionResult()),
                     child: Text('Done (${_selected.length})'),
                   ),
                 ],
@@ -498,122 +641,155 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                           onPressed: () {
                             _searchController.clear();
                             setState(() => _query = '');
+                            unawaited(_loadContacts(reset: true));
                           },
                           icon: const Icon(Icons.close),
                         ),
                 ),
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: (v) {
+                  setState(() => _query = v);
+                  unawaited(_loadContacts(reset: true));
+                },
               ),
             ),
             Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.people_outline, size: 48, color: AppColors.textTertiary),
-                          const SizedBox(height: 12),
-                          Text(
-                            _query.isEmpty ? 'No contacts yet' : 'No results',
-                            style: AppTextStyles.bodyMedium(context),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _contacts.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.people_outline,
+                                size: 48,
+                                color: AppColors.textTertiary,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _query.isEmpty ? 'No contacts yet' : 'No results',
+                                style: AppTextStyles.bodyMedium(context),
+                              ),
+                              if (_query.isEmpty) ...[
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  onPressed: widget.onAddContacts,
+                                  icon: const Icon(Icons.person_add_alt_1),
+                                  label: const Text('Add Contacts'),
+                                ),
+                              ],
+                            ],
                           ),
-                          if (_query.isEmpty) ...[
-                            const SizedBox(height: 16),
-                            FilledButton.icon(
-                              onPressed: widget.onAddContacts,
-                              icon: const Icon(Icons.person_add_alt_1),
-                              label: const Text('Add Contacts'),
-                            ),
-                          ],
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                itemCount: filtered.length,
-                itemBuilder: (context, index) {
-                  final contact = filtered[index];
-                  final phone = contact.phoneNumber;
-                  final selected = phone != null && _selected.contains(phone);
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                          itemCount: _contacts.length + (_loadingMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index >= _contacts.length) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(child: CircularProgressIndicator()),
+                              );
+                            }
 
-                  final bg = selected ? scheme.primaryContainer : scheme.surface;
-                  final fg = selected ? scheme.onPrimaryContainer : AppColors.textPrimary;
-                  final secondaryFg = selected ? scheme.onPrimaryContainer : AppColors.textSecondary;
+                            final contact = _contacts[index];
+                            final phone = contact.phoneNumber;
+                            final selected = phone != null && _selected.contains(phone);
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: bg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: selected ? scheme.primary : scheme.outlineVariant),
-                      boxShadow: AppShadows.card,
-                    ),
-                    child: InkWell(
-                      onTap: phone == null
-                          ? null
-                          : () {
-                              setState(() {
-                                if (selected) {
-                                  _selected.remove(phone);
-                                } else {
-                                  _selected.add(phone);
-                                }
-                              });
-                            },
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: selected ? scheme.primary : scheme.primaryContainer,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Text(
-                                (contact.name?.isNotEmpty ?? false) ? contact.name![0].toUpperCase() : '?',
-                                style: TextStyle(
-                                  color: selected ? scheme.onPrimary : scheme.onPrimaryContainer,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
+                            final bg = selected ? scheme.primaryContainer : scheme.surface;
+                            final fg = selected
+                                ? scheme.onPrimaryContainer
+                                : AppColors.textPrimary;
+                            final secondaryFg = selected
+                                ? scheme.onPrimaryContainer
+                                : AppColors.textSecondary;
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: bg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: selected
+                                      ? scheme.primary
+                                      : scheme.outlineVariant,
+                                ),
+                                boxShadow: AppShadows.card,
+                              ),
+                              child: InkWell(
+                                onTap: phone == null ? null : () => _toggleSelection(contact),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 44,
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? scheme.primary
+                                            : scheme.primaryContainer,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          (contact.name?.isNotEmpty ?? false)
+                                              ? contact.name![0].toUpperCase()
+                                              : '?',
+                                          style: TextStyle(
+                                            color: selected
+                                                ? scheme.onPrimary
+                                                : scheme.onPrimaryContainer,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: ContactIdentityDetails(
+                                        name: contact.name ?? 'Unknown',
+                                        phoneNumber: contact.phoneNumber,
+                                        isVerified: contact.isRegistered,
+                                        nameStyle: AppTextStyles.titleMedium(context)
+                                            .copyWith(fontSize: 15, color: fg),
+                                        phoneStyle: AppTextStyles.bodySmall(context).copyWith(
+                                          fontSize: 12,
+                                          color: secondaryFg,
+                                        ),
+                                      ),
+                                    ),
+                                    AnimatedContainer(
+                                      duration: const Duration(milliseconds: 160),
+                                      width: 26,
+                                      height: 26,
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? scheme.primary
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: selected
+                                              ? scheme.primary
+                                              : scheme.outlineVariant,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: selected
+                                          ? Icon(
+                                              Icons.check,
+                                              size: 16,
+                                              color: scheme.onPrimary,
+                                            )
+                                          : null,
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: ContactIdentityDetails(
-                              name: contact.name ?? 'Unknown',
-                              phoneNumber: contact.phoneNumber,
-                              isVerified: contact.isRegistered,
-                              nameStyle: AppTextStyles.titleMedium(context).copyWith(fontSize: 15, color: fg),
-                              phoneStyle: AppTextStyles.bodySmall(context).copyWith(
-                                fontSize: 12,
-                                color: secondaryFg,
-                              ),
-                            ),
-                          ),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 160),
-                            width: 26,
-                            height: 26,
-                            decoration: BoxDecoration(
-                              color: selected ? scheme.primary : Colors.transparent,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: selected ? scheme.primary : scheme.outlineVariant,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: selected ? Icon(Icons.check, size: 16, color: scheme.onPrimary) : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
@@ -621,4 +797,3 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
     );
   }
 }
-

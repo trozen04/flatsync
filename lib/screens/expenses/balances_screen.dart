@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
-import 'package:isar/isar.dart';
 import 'package:provider/provider.dart';
 
 import '../../constants/app_dimensions.dart';
@@ -11,7 +10,6 @@ import '../../constants/app_text_styles.dart';
 import '../../constants/app_shadows.dart';
 import '../../widgets/loading_indicator.dart';
 import '../../models/contact_model.dart';
-import '../../services/isar_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
 import '../../bloc/contact_provider.dart';
@@ -50,7 +48,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
       });
       _contactUpdatesSub = context.read<ContactService>().updates.listen((_) async {
         if (!mounted) return;
-        await _loadContactsLookup();
+        await _loadContactsLookup(context.read<ExpenseService>().getCachedBalanceContacts());
         if (mounted) setState(() {});
       });
     });
@@ -65,10 +63,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
 
   String _canonicalPhone(String value) => PhoneUtils.canonical(value);
 
-  Future<void> _loadContactsLookup() async {
-    final isar = context.read<IsarService>();
-    final all = await isar.isar.contactModels.where().findAll();
-
+  Future<void> _loadContactsLookup(List<ContactModel> all) async {
     _contactsById = {
       for (final c in all)
         if (c.contactId != null && c.contactId!.isNotEmpty) c.contactId!: c,
@@ -91,7 +86,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
       final balances = await expenseService.getBalances(forceRefresh: forceRefresh);
       
       if (!mounted) return;
-      await _loadContactsLookup();
+      await _loadContactsLookup(expenseService.getCachedBalanceContacts());
 
       int net = 0;
       balances.forEach((_, amount) => net += (amount as num).round());
@@ -296,4 +291,3 @@ class _BalancesScreenState extends State<BalancesScreen> {
     );
   }
 }
-
