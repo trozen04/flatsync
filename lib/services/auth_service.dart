@@ -155,10 +155,13 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> sendResetPinOtp(String phoneNumber) async {
+    final normalizedPhone = _normalizePhone(phoneNumber);
+    developer.log('AuthService: sendResetPinOtp request ($normalizedPhone)', name: 'AuthService');
     final response = await _api.post(
       ApiConfig.sendResetPinOtp,
-      data: {'phoneNumber': _normalizePhone(phoneNumber)},
+      data: {'phoneNumber': normalizedPhone},
     );
+    developer.log('AuthService: sendResetPinOtp response: ${response.data}', name: 'AuthService');
     return response.data;
   }
 
@@ -168,10 +171,12 @@ class AuthService {
     required String name,
     required String pin,
   }) async {
+    final normalizedPhone = _normalizePhone(phoneNumber);
+    developer.log('AuthService: verifySignupOtp request (phone: $normalizedPhone, name: $name)', name: 'AuthService');
     final response = await _api.post(
       ApiConfig.verifyOtp,
       data: {
-        'phoneNumber': _normalizePhone(phoneNumber),
+        'phoneNumber': normalizedPhone,
         'otp': otp,
         'name': name,
         'pin': pin,
@@ -190,6 +195,7 @@ class AuthService {
     await _storage.write(key: 'user_id', value: user.userId);
     await _storage.write(key: 'hashed_pin', value: user.hashedPin);
 
+    developer.log('AuthService: verifySignupOtp success (userId: ${user.userId})', name: 'AuthService');
     return user;
   }
 
@@ -232,16 +238,17 @@ class AuthService {
     required String otp,
     required String pin,
   }) async {
+    final normalizedPhone = _normalizePhone(phoneNumber);
+    developer.log('AuthService: verifyResetPinOtp request ($normalizedPhone)', name: 'AuthService');
     await _api.post(
       ApiConfig.verifyResetPinOtp,
       data: {
-        'phoneNumber': _normalizePhone(phoneNumber),
+        'phoneNumber': normalizedPhone,
         'otp': otp,
         'pin': pin,
       },
     );
-
-    // Keep offline PIN check aligned with the latest successful reset.
+    developer.log('AuthService: verifyResetPinOtp success', name: 'AuthService');
     await _storage.write(key: 'hashed_pin', value: _hashPin(pin));
   }
 

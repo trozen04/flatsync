@@ -39,7 +39,6 @@ class ExpenseService {
   DateTime? _balancesCacheAt;
 
   List<ContactModel>? _balanceContactsCache;
-  DateTime? _balanceContactsCacheAt;
 
   final Map<String, List<dynamic>> _conversationCache = {};
   final Map<String, DateTime> _conversationCacheAt = {};
@@ -92,7 +91,6 @@ class ExpenseService {
     _balancesCache = null;
     _balancesCacheAt = null;
     _balanceContactsCache = null;
-    _balanceContactsCacheAt = null;
     _conversationCache.clear();
     _conversationCacheAt.clear();
     _timelineCache.clear();
@@ -261,8 +259,9 @@ class ExpenseService {
     required String description,
     required int totalAmount,
     required List<String> participants,
+    String category = 'other',
   }) async {
-    developer.log('Creating expense: desc=$description, amount=$totalAmount, participants=$participants');
+    developer.log('Creating expense: desc=$description, amount=$totalAmount, category=$category, participants=$participants');
 
     final response = await _api.post(
       ApiConfig.expenses,
@@ -270,6 +269,7 @@ class ExpenseService {
         'description': description,
         'totalAmount': totalAmount,
         'participants': participants,
+        'category': category,
       },
     );
 
@@ -330,6 +330,27 @@ class ExpenseService {
     }
   }
 
+  Future<ExpenseModel> updateExpense({
+    required String expenseId,
+    String? description,
+    int? totalAmount,
+    String? category,
+  }) async {
+    final response = await _api.patch(
+      ApiConfig.expenseById(expenseId),
+      data: {
+        if (description != null) 'description': description,
+        if (totalAmount != null) 'totalAmount': totalAmount,
+        if (category != null) 'category': category,
+      },
+    );
+    final model = ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
+    await _isarService.upsertExpense(model);
+    _invalidateCaches();
+    _emitUpdate();
+    return model;
+  }
+
   Future<void> deleteExpense(String expenseId) async {
     await _api.delete('${ApiConfig.expenses}/$expenseId');
     _invalidateCaches();
@@ -337,13 +358,16 @@ class ExpenseService {
   }
 
   Future<void> createTransaction({
-    required String toUserId,
+    String? toUserId,
+    String? toPhone,
     required int amount,
   }) async {
+    assert(toUserId != null || toPhone != null, 'Either toUserId or toPhone required');
     final response = await _api.post(
       ApiConfig.transactions,
       data: {
-        'toUser': toUserId,
+        if (toUserId != null) 'toUser': toUserId,
+        if (toPhone != null) 'toPhone': toPhone,
         'amount': amount,
       },
     );
@@ -360,6 +384,19 @@ class ExpenseService {
     }
 
     await _storeRecentAmount(amount);
+    _invalidateCaches();
+    _emitUpdate();
+  }
+
+  Future<void> deleteTransaction(String transactionId) async {
+    await _api.delete(ApiConfig.transactionById(transactionId));
+
+    final existing = List<TransactionModel>.from(_transactionsCache ?? const []);
+    existing.removeWhere((t) => t.transactionId == transactionId);
+    _transactionsCache = existing;
+    _transactionsCacheAt = DateTime.now();
+    unawaited(_persistTransactions(existing));
+
     _invalidateCaches();
     _emitUpdate();
   }
@@ -502,7 +539,6 @@ class ExpenseService {
 
           // Cache enriched contacts extracted from the same response so callers can sync without an extra API hit.
           _balanceContactsCache = contacts;
-          _balanceContactsCacheAt = DateTime.now();
 
           return normalized;
         }

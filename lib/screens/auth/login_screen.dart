@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../../constants/app_dimensions.dart';
 import '../../constants/app_text_styles.dart';
+import '../../services/app_preferences_service.dart';
 import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
 import '../../services/isar_service.dart';
@@ -107,11 +108,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(15),
                   ],
+                  onCountryChanged: (country) {
+                    context
+                        .read<AppPreferencesService>()
+                        .autoSetCurrencyFromCountry(country.code);
+                  },
                   onChanged: (phone) {
                     final digits = phone.number.replaceAll(RegExp(r'[^0-9]'), '');
                     if (digits.length >= 6 && digits.length <= 15) {
                       _phoneNumber = phone.completeNumber;
                     }
+                    context
+                        .read<AppPreferencesService>()
+                        .autoSetCurrencyFromCountry(phone.countryISOCode);
                   },
                 ),
                 AppDimensions.h20(context),

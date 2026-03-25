@@ -2090,4 +2090,3 @@ extension ExpenseModelQueryProperty
     });
   }
 }
-

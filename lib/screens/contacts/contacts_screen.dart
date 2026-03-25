@@ -9,12 +9,14 @@ import '../../constants/app_dimensions.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_text_styles.dart';
 import '../../constants/app_shadows.dart';
+import '../../services/app_preferences_service.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/loading_indicator.dart';
 import '../../models/contact_model.dart';
 import '../../services/isar_service.dart';
 import '../../services/contact_service.dart';
 import '../../services/expense_service.dart';
+import '../../utils/money_utils.dart';
 import '../../utils/phone_utils.dart';
 import '../../utils/custom_snackbar.dart';
 import '../../widgets/contact_identity_details.dart';
@@ -53,7 +55,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   StreamSubscription<int>? _updatesSub;
   StreamSubscription<int>? _contactUpdatesSub;
-  static const double _currencyDivisor = 100.0;
   static const int _pageSize = 40;
   bool _isReconciling = false;
   DateTime? _lastReconcileAt;
@@ -255,10 +256,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return _balancesByCanonicalPhone[phoneKey] ?? 0;
   }
 
-  String _balanceText(int amount) {
-    final rupees = amount.abs() / _currencyDivisor;
-    if (amount > 0) return 'Owes you Rs ${rupees.toStringAsFixed(2)}';
-    if (amount < 0) return 'You owe Rs ${rupees.toStringAsFixed(2)}';
+  String _balanceText(int amount, String currencyCode) {
+    final formatted = formatMinorUnits(
+      amount,
+      currencyCode: currencyCode,
+      absolute: true,
+    );
+    if (amount > 0) return 'Owes you $formatted';
+    if (amount < 0) return 'You owe $formatted';
     return 'Settled';
   }
 
@@ -405,40 +410,47 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final preferredCurrencyCode =
+        context.watch<AppPreferencesService>().preferredCurrencyCode;
     if (_contacts.isEmpty && _query.trim().isNotEmpty) {
       return Scaffold(
         backgroundColor: Colors.white,
-        body: Padding(
-          padding: AppDimensions.appMargin(context),
-          child: Column(
-            children: [
-              LoadingIndicator(isLoading: _syncing || _refreshing),
-              TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search contacts',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            _searchController.clear();
-                            _onSearchChanged('');
-                          },
-                          icon: const Icon(Icons.close),
-                        ),
+        resizeToAvoidBottomInset: false,
+        body: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Padding(
+            padding: AppDimensions.appMargin(context),
+            child: Column(
+              children: [
+                LoadingIndicator(isLoading: _syncing || _refreshing),
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search contacts',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              _onSearchChanged('');
+                            },
+                            icon: const Icon(Icons.close),
+                          ),
+                  ),
+                  onChanged: _onSearchChanged,
                 ),
-                onChanged: _onSearchChanged,
-              ),
-              Expanded(
-                child: Center(
-                  child: Text(
-                    'No contacts match your search',
-                    style: AppTextStyles.bodyMedium(context),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      'No contacts match your search',
+                      style: AppTextStyles.bodyMedium(context),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -491,9 +503,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Padding(
-        padding: AppDimensions.appMargin(context),
-        child: Column(
+      resizeToAvoidBottomInset: false,
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Padding(
+          padding: AppDimensions.appMargin(context),
+          child: Column(
           children: [
             LoadingIndicator(isLoading: _syncing || _refreshing),
             TextField(
@@ -579,7 +595,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   fontSize: 12,
                                 ),
                                 extra: Text(
-                                  _balanceText(balance),
+                                  _balanceText(balance, preferredCurrencyCode),
                                   style: AppTextStyles.labelLarge(context).copyWith(
                                     color: _balanceColor(balance),
                                     fontSize: 13,
@@ -597,6 +613,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
             ),
           ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton(

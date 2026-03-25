@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
+import 'package:flatsync/bloc/contact_provider.dart';
 import 'package:flatsync/constants/app_colors.dart';
-import 'package:flatsync/constants/app_text_styles.dart';
+import 'package:flatsync/constants/app_currencies.dart';
 import 'package:flatsync/constants/app_spacing.dart';
+import 'package:flatsync/constants/app_text_styles.dart';
+import 'package:flatsync/services/app_preferences_service.dart';
+import 'package:flatsync/utils/money_utils.dart';
 import 'package:flatsync/widgets/app_card.dart';
 import 'package:flatsync/widgets/app_input.dart';
-import 'package:flatsync/bloc/contact_provider.dart';
 
 /// User dropdown widget for selecting who paid
 class UserDropdown extends StatefulWidget {
@@ -50,7 +54,7 @@ class _UserDropdownState extends State<UserDropdown> {
   }
 }
 
-/// Input field for expense amount (in paise, smallest currency unit)
+/// Input field for expense amount (in smallest currency unit)
 class AmountInput extends StatefulWidget {
   final TextEditingController controller;
   final String label;
@@ -68,25 +72,24 @@ class AmountInput extends StatefulWidget {
 class _AmountInputState extends State<AmountInput> {
   @override
   Widget build(BuildContext context) {
+    final currencyCode =
+        context.watch<AppPreferencesService>().preferredCurrencyCode;
+    final currency = AppCurrencies.byCode(currencyCode);
+
     return AppTextField(
       controller: widget.controller,
       label: widget.label,
-      hint: 'Enter amount in rupees',
+      hint: 'Enter amount in ${currency.code}',
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       maxLength: 5,
       inputFormatters: [
         TextInputFormatter.withFunction((oldValue, newValue) {
           final text = newValue.text;
 
-          // allow empty
           if (text.isEmpty) return newValue;
-
-          // allow only digits and dot
           if (!RegExp(r'^[0-9.]*$').hasMatch(text)) {
             return oldValue;
           }
-
-          // allow only ONE dot
           if ('.'.allMatches(text).length > 1) {
             return oldValue;
           }
@@ -97,7 +100,7 @@ class _AmountInputState extends State<AmountInput> {
       prefixIcon: Padding(
         padding: EdgeInsets.all(AppSpacing.responsive(context, AppSpacing.md)),
         child: Text(
-          '₹',
+          currency.symbol.trim(),
           style: AppTextStyles.bodyLarge(context).copyWith(
             color: AppColors.textSecondary,
           ),
@@ -122,10 +125,10 @@ class BalanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final paid = totalPaid / 100;
-    final balance = netBalance / 100;
-    final balanceColor = netBalance > 0 
-        ? AppColors.success 
+    final currencyCode =
+        context.watch<AppPreferencesService>().preferredCurrencyCode;
+    final balanceColor = netBalance > 0
+        ? AppColors.success
         : (netBalance < 0 ? AppColors.error : AppColors.textSecondary);
     final isPositive = netBalance >= 0;
     final contactProvider = context.watch<ContactProvider>();
@@ -169,7 +172,7 @@ class BalanceCard extends StatelessWidget {
                   ),
                   AppSpacing.responsiveVerticalSpace(context, AppSpacing.xs),
                   Text(
-                    '₹${paid.toStringAsFixed(2)}',
+                    formatMinorUnits(totalPaid, currencyCode: currencyCode),
                     style: AppTextStyles.currency(context),
                   ),
                 ],
@@ -183,7 +186,11 @@ class BalanceCard extends StatelessWidget {
                   ),
                   AppSpacing.responsiveVerticalSpace(context, AppSpacing.xs),
                   Text(
-                    '₹${balance.abs().toStringAsFixed(2)}',
+                    formatMinorUnits(
+                      netBalance,
+                      currencyCode: currencyCode,
+                      absolute: true,
+                    ),
                     style: AppTextStyles.currency(context).copyWith(
                       color: balanceColor,
                       fontWeight: FontWeight.bold,
@@ -214,7 +221,8 @@ class SettlementItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settleAmount = amount / 100;
+    final currencyCode =
+        context.watch<AppPreferencesService>().preferredCurrencyCode;
     final contactProvider = context.watch<ContactProvider>();
     final fromName = contactProvider.getDisplayName(from);
     final toName = contactProvider.getDisplayName(to);
@@ -249,7 +257,7 @@ class SettlementItem extends StatelessWidget {
                 const Icon(Icons.arrow_forward, color: Colors.blue),
                 const SizedBox(height: 4),
                 Text(
-                  '₹${settleAmount.toStringAsFixed(2)}',
+                  formatMinorUnits(amount, currencyCode: currencyCode),
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,
@@ -336,8 +344,15 @@ class SyncStatusWidget extends StatelessWidget {
           if (!isSyncing)
             ElevatedButton.icon(
               onPressed: onSyncPressed,
-              icon: const Icon(Icons.sync, size: 16, color: Colors.white,),
-              label: const Text('Sync Now', style: TextStyle(color: Colors.white),),
+              icon: const Icon(
+                Icons.sync,
+                size: 16,
+                color: Colors.white,
+              ),
+              label: const Text(
+                'Sync Now',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
         ],
       ),
@@ -359,4 +374,3 @@ class SyncStatusWidget extends StatelessWidget {
     }
   }
 }
-

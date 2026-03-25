@@ -3,13 +3,16 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../constants/app_currencies.dart';
 import '../../constants/app_dimensions.dart';
 import '../../constants/app_text_styles.dart';
+import '../../services/app_preferences_service.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/shadowed_app_bar.dart';
 import '../../models/user_model.dart';
 import '../../services/isar_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/biometric_auth_service.dart';
 import '../../utils/custom_snackbar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -26,12 +29,94 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _phoneController = TextEditingController();
   bool _loading = true;
   bool _saving = false;
+  bool _biometricBusy = false;
+  bool _biometricAvailable = false;
+  String? _biometricLabel;
   UserModel? _user;
+
+  Future<void> _showCurrencyPicker(AppPreferencesService preferences) async {
+    final searchController = TextEditingController();
+    var query = '';
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final filtered = AppCurrencies.supported.where((currency) {
+            final q = query.trim().toLowerCase();
+            if (q.isEmpty) return true;
+            return currency.code.toLowerCase().contains(q) ||
+                currency.label.toLowerCase().contains(q);
+          }).toList();
+
+          return SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.78,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Text(
+                    'Choose Currency',
+                    style: AppTextStyles.titleMedium(sheetContext),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchController,
+                    decoration: const InputDecoration(
+                      labelText: 'Search currency',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (value) {
+                      setSheetState(() => query = value);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final currency = filtered[index];
+                        final isSelected =
+                            currency.code == preferences.preferredCurrencyCode;
+                        return ListTile(
+                          leading: CircleAvatar(
+                            child: Text(currency.code.substring(0, 1)),
+                          ),
+                          title: Text('${currency.code} - ${currency.label}'),
+                          subtitle: Text(currency.symbol.trim()),
+                          trailing: isSelected ? const Icon(Icons.check) : null,
+                          onTap: () => Navigator.pop(sheetContext, currency.code),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (!mounted || selected == null) return;
+    await preferences.setPreferredCurrency(
+      selected,
+      manuallySelected: true,
+    );
+    if (!mounted) return;
+    CustomSnackBar.show(context, message: 'Default currency updated');
+  }
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _load();
+      await _loadBiometricAvailability();
+    });
   }
 
   @override
@@ -63,6 +148,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
       developer.log('Profile load error: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadBiometricAvailability() async {
+    try {
+      final biometric = context.read<BiometricAuthService>();
+      final available = await biometric.isAvailable();
+      final types = await biometric.getAvailableBiometrics();
+      if (!mounted) return;
+      setState(() {
+        _biometricAvailable = available;
+        _biometricLabel = available ? biometric.describeBiometrics(types) : null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _biometricAvailable = false;
+        _biometricLabel = null;
+      });
     }
   }
 
@@ -121,9 +225,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _toggleBiometric(bool enabled) async {
+    if (_biometricBusy) return;
+    if (enabled && !_biometricAvailable) {
+      CustomSnackBar.show(
+        context,
+        message: 'Biometric authentication is not available on this device',
+        isError: true,
+      );
+      return;
+    }
+
+    setState(() => _biometricBusy = true);
+    try {
+      final preferences = context.read<AppPreferencesService>();
+      if (enabled) {
+        final ok = await context.read<BiometricAuthService>().authenticate(
+              reason: 'Confirm biometric unlock for SplitEasy',
+            );
+        if (!ok) {
+          if (mounted) {
+            CustomSnackBar.show(
+              context,
+              message: 'Biometric verification failed',
+              isError: true,
+            );
+          }
+          return;
+        }
+      }
+
+      await preferences.setBiometricEnabled(enabled);
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: enabled
+              ? 'Biometric unlock enabled'
+              : 'Biometric unlock disabled',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _biometricBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final preferences = context.watch<AppPreferencesService>();
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -142,8 +291,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: AppDimensions.appMargin(context),
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                : ListView(
+                    padding: EdgeInsets.only(
+                      bottom: AppDimensions.height(context) * 0.14,
+                    ),
                     children: [
                       Container(
                         padding: const EdgeInsets.all(14),
@@ -158,7 +309,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               radius: 26,
                               backgroundColor: scheme.primary.withOpacity(0.15),
                               child: Text(
-                                ((_user?.name ?? 'U').trim().isEmpty ? 'U' : (_user!.name!.trim()[0])).toUpperCase(),
+                                ((_user?.name ?? 'U').trim().isEmpty
+                                        ? 'U'
+                                        : (_user!.name!.trim()[0]))
+                                    .toUpperCase(),
                                 style: TextStyle(
                                   color: scheme.primary,
                                   fontWeight: FontWeight.w700,
@@ -172,7 +326,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _user?.name?.trim().isNotEmpty == true ? _user!.name! : 'User',
+                                    _user?.name?.trim().isNotEmpty == true
+                                        ? _user!.name!
+                                        : 'User',
                                     style: AppTextStyles.titleMedium(context),
                                   ),
                                   const SizedBox(height: 4),
@@ -207,6 +363,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
+                      AppDimensions.h20(context),
+                      Text('Security & preferences',
+                          style: AppTextStyles.titleMedium(context)),
+                      AppDimensions.h10(context),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: scheme.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: scheme.outlineVariant),
+                        ),
+                        child: Column(
+                          children: [
+                            SwitchListTile(
+                              value: preferences.biometricEnabled,
+                              onChanged: _biometricBusy ? null : _toggleBiometric,
+                              title: const Text('Biometric unlock'),
+                              subtitle: Text(
+                                _biometricAvailable
+                                    ? (_biometricLabel == null
+                                        ? 'Use biometrics to open the app'
+                                        : 'Use $_biometricLabel to open the app')
+                                    : 'Not available on this device',
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            ListTile(
+                              title: const Text('Default currency'),
+                              subtitle: Text(
+                                '${preferences.preferredCurrency.code} - ${preferences.preferredCurrency.label}',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => _showCurrencyPicker(preferences),
+                            ),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: Text(
+                                'This currency will be used for amount input and display across the app.',
+                                style: AppTextStyles.bodySmall(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
           ),
@@ -225,4 +425,3 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
-

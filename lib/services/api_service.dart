@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,16 +23,33 @@ class ApiService {
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }
+        developer.log(
+          '[API] --> ${options.method} ${options.baseUrl}${options.path} | body: ${options.data}',
+          name: 'ApiService',
+        );
         return handler.next(options);
       },
+      onResponse: (response, handler) {
+        developer.log(
+          '[API] <-- ${response.statusCode} ${response.requestOptions.method} ${response.requestOptions.path} | body: ${response.data}',
+          name: 'ApiService',
+        );
+        return handler.next(response);
+      },
       onError: (error, handler) async {
+        developer.log(
+          '[API] ERROR ${error.response?.statusCode} ${error.requestOptions.method} ${error.requestOptions.path} | ${error.response?.data ?? error.message}',
+          name: 'ApiService',
+          error: error,
+        );
         if (error.response?.statusCode == 401) {
-          // Try to refresh token
+          developer.log('[API] 401 received, attempting token refresh...', name: 'ApiService');
           final refreshed = await _refreshToken();
           if (refreshed) {
-            // Retry original request
+            developer.log('[API] Token refreshed, retrying request...', name: 'ApiService');
             return handler.resolve(await _dio.fetch(error.requestOptions));
           }
+          developer.log('[API] Token refresh failed', name: 'ApiService');
         }
         return handler.next(error);
       },

@@ -11,6 +11,7 @@ class ApiConfig {
 
   // Auto-select based on build mode
   static String get baseUrl => isProduction ? productionUrl : developmentUrl;
+  // static String get baseUrl => productionUrl;
 
   static const Duration timeout = Duration(seconds: 30);
 
@@ -30,11 +31,12 @@ class ApiConfig {
   // Contact endpoints
   static const String matchContacts = '/contacts/match';
 
-  // Expense endpoints
   static const String expenses = '/expenses';
+  static String expenseById(String id) => '/expenses/$id';
 
   // Transaction endpoints
   static const String transactions = '/transactions';
+  static String transactionById(String id) => '/transactions/$id';
 
   // Balance endpoints
   static const String balances = '/balances';
@@ -45,4 +47,3 @@ class ApiConfig {
   // Unified timeline endpoints (used for chat + history)
   static const String timeline = '/timeline';
 }
-

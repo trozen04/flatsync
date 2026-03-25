@@ -1305,4 +1305,3 @@ extension ContactModelQueryProperty
     });
   }
 }
-

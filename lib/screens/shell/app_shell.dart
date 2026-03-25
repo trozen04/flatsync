@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../constants/app_colors.dart';
 import '../../constants/app_text_styles.dart';
-import '../../constants/app_shadows.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_shell_navigation.dart';
 import '../../widgets/shadowed_app_bar.dart';
+import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
@@ -16,6 +16,7 @@ import '../expenses/add_expense_screen.dart';
 import '../expenses/balances_screen.dart';
 import '../expenses/history_screen.dart';
 import '../profile/profile_screen.dart';
+import 'package:in_app_update/in_app_update.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -31,6 +32,26 @@ class _AppShellState extends State<AppShell> {
 
   // 0 = Add, 1 = Contacts, 2 = Balances, 3 = History, 4 = Profile
   final List<Widget?> _screens = List<Widget?>.filled(5, null, growable: false);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForUpdate());
+  }
+
+  Future<void> _checkForUpdate() async {
+    try {
+      final info = await InAppUpdate.checkForUpdate();
+      if (info.updateAvailability == UpdateAvailability.updateAvailable) {
+        if (info.immediateUpdateAllowed) {
+          await InAppUpdate.performImmediateUpdate();
+        } else if (info.flexibleUpdateAllowed) {
+          await InAppUpdate.startFlexibleUpdate();
+          await InAppUpdate.completeFlexibleUpdate();
+        }
+      }
+    } catch (_) {}
+  }
 
   void _resetScreenCache() {
     for (var i = 0; i < _screens.length; i++) {
@@ -60,14 +81,13 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _logout() async {
-    final confirmed = await AppDialog.showConfirm(
-      context: context,
+    final confirmed = await AppConfirmDialog.show(
+      context,
       title: 'Logout',
       message: 'Are you sure you want to logout?\nAll local data will be cleared.',
-      icon: Icons.logout,
-      iconColor: Colors.red.shade400,
-      confirmText: 'Logout',
-      isDanger: true,
+      icon: Icons.logout_rounded,
+      variant: DialogVariant.danger,
+      confirmLabel: 'Logout',
     );
 
     if (confirmed == true && mounted) {
@@ -82,11 +102,12 @@ class _AppShellState extends State<AppShell> {
       await isar.isar.writeTxn(() async {
         await isar.isar.clear();
       });
-      
+
       // Logout from auth service
       await context.read<NotificationService>().unregisterDevice();
+      await context.read<AppPreferencesService>().resetForLogout();
       await context.read<AuthService>().logout();
-      
+
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
@@ -121,187 +142,69 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final titles = ['Add Expense', 'Contacts', 'Balances', 'Your History', 'Profile'];
-    final scheme = Theme.of(context).colorScheme;
-    final navReserved = 92.0 + MediaQuery.of(context).padding.bottom;
+    final titles = [
+      'Add Expense',
+      'Contacts',
+      'Balances',
+      'History',
+      'Profile'
+    ];
+    final navReserved = AppShellNavigation.barHeight +
+        MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      extendBody: true,
-      appBar: ShadowedAppBar(
-        child: AppBar(
-          elevation: 8,
-          scrolledUnderElevation: 0,
-          title: Text(
-            titles[_selectedIndex],
-            style: AppTextStyles.headlineSmall(context).copyWith(color: Colors.white),
-          ),
-          actions: [
-            IconButton(
-              icon: _refreshing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync),
-              onPressed: _refreshing ? null : _refreshCurrentData,
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        extendBody: true,
+        resizeToAvoidBottomInset: false,
+        appBar: ShadowedAppBar(
+          child: AppBar(
+            elevation: 8,
+            scrolledUnderElevation: 0,
+            title: Text(
+              titles[_selectedIndex],
+              style: AppTextStyles.headlineSmall(context)
+                  .copyWith(color: Colors.white),
             ),
-            IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: _logout,
-            ),
-          ],
-        ),
-      ),
-      body: Padding(
-        // Screens inside AppShell are full Scaffolds; reserve space so their content
-        // doesn't render behind the custom bottom bar.
-        padding: EdgeInsets.only(bottom: navReserved),
-        child: Stack(
-          children: [
-            for (var index = 0; index < _screens.length; index++)
-              if (_loadedTabIndexes.contains(index))
-                Offstage(
-                  offstage: _selectedIndex != index,
-                  child: TickerMode(
-                    enabled: _selectedIndex == index,
-                    child: _screenFor(index),
-                  ),
-                ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(boxShadow: AppShadows.navigation),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 92,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.bottomCenter,
-              children: [
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    height: 66,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      border: Border(
-                        top: BorderSide(color: scheme.outlineVariant.withOpacity(0.65)),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _BottomNavItem(
-                            label: 'Contacts',
-                            icon: Icons.people_outline,
-                            selectedIcon: Icons.people,
-                            selected: _selectedIndex == 1,
-                            onTap: () => _selectTab(1),
-                          ),
-                        ),
-                        Expanded(
-                          child: _BottomNavItem(
-                            label: 'Balances',
-                            icon: Icons.account_balance_wallet_outlined,
-                            selectedIcon: Icons.account_balance_wallet,
-                            selected: _selectedIndex == 2,
-                            onTap: () => _selectTab(2),
-                          ),
-                        ),
-                        const SizedBox(width: 70), // space for center add button
-                        Expanded(
-                          child: _BottomNavItem(
-                            label: 'History',
-                            icon: Icons.history,
-                            selectedIcon: Icons.history,
-                            selected: _selectedIndex == 3,
-                            onTap: () => _selectTab(3),
-                          ),
-                        ),
-                        Expanded(
-                          child: _BottomNavItem(
-                            label: 'Profile',
-                            icon: Icons.person_outline,
-                            selectedIcon: Icons.person,
-                            selected: _selectedIndex == 4,
-                            onTap: () => _selectTab(4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: 22,
-                  child: SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: FloatingActionButton(
-                      heroTag: 'add_expense_fab',
-                      elevation: 6,
-                      backgroundColor: scheme.primary,
-                      foregroundColor: scheme.onPrimary,
-                      onPressed: () => _selectTab(0),
-                      child: const Icon(Icons.add, size: 30),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomNavItem extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final IconData selectedIcon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _BottomNavItem({
-    required this.label,
-    required this.icon,
-    required this.selectedIcon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = selected ? scheme.primary : AppColors.textSecondary;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(selected ? selectedIcon : icon, color: color, size: 22),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: color,
+            actions: [
+              IconButton(
+                icon: _refreshing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync),
+                onPressed: _refreshing ? null : _refreshCurrentData,
               ),
-            ),
-          ],
+              IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: _logout,
+              ),
+            ],
+          ),
+        ),
+        body: Padding(
+          // Screens inside AppShell are full Scaffolds; reserve space so their content
+          // doesn't render behind the custom bottom bar.
+          padding: EdgeInsets.only(bottom: navReserved),
+          child: Stack(
+            children: [
+              for (var index = 0; index < _screens.length; index++)
+                if (_loadedTabIndexes.contains(index))
+                  Offstage(
+                    offstage: _selectedIndex != index,
+                    child: TickerMode(
+                      enabled: _selectedIndex == index,
+                      child: _screenFor(index),
+                    ),
+                  ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: AppShellNavigation(
+          selectedIndex: _selectedIndex,
+          onSelected: _selectTab,
         ),
       ),
     );

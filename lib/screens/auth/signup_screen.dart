@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../../constants/app_dimensions.dart';
 import '../../widgets/custom_button.dart';
+import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/custom_snackbar.dart';
 import '../../utils/phone_utils.dart';
@@ -178,6 +179,11 @@ class _SignupScreenState extends State<SignupScreen> {
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(15),
                 ],
+                onCountryChanged: (country) {
+                  context
+                      .read<AppPreferencesService>()
+                      .autoSetCurrencyFromCountry(country.code);
+                },
                 onChanged: (phone) {
                   final digits = phone.number.replaceAll(RegExp(r'[^0-9]'), '');
                   setState(() {
@@ -185,6 +191,9 @@ class _SignupScreenState extends State<SignupScreen> {
                         ? phone.completeNumber
                         : '';
                   });
+                  context
+                      .read<AppPreferencesService>()
+                      .autoSetCurrencyFromCountry(phone.countryISOCode);
                   _syncCountdown();
                 },
               ),

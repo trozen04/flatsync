@@ -7,10 +7,12 @@ import 'package:provider/provider.dart';
 
 import '../../constants/app_dimensions.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_currencies.dart';
 import '../../constants/app_text_styles.dart';
 import '../../constants/app_shadows.dart';
 import '../../widgets/custom_button.dart';
 import '../../models/contact_model.dart';
+import '../../services/app_preferences_service.dart';
 import '../../services/isar_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
@@ -33,6 +35,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final Map<String, ContactModel> _contactsByPhone = {};
   final List<String> _selectedParticipants = [];
   List<int> _recentAmountsPaise = [];
+  String _selectedCategory = 'other';
+
+  static const _categories = [
+    ('other', 'Other', Icons.category_outlined),
+    ('food', 'Food', Icons.restaurant_outlined),
+    ('travel', 'Travel', Icons.flight_outlined),
+    ('rent', 'Rent', Icons.home_outlined),
+    ('shopping', 'Shopping', Icons.shopping_bag_outlined),
+    ('entertainment', 'Entertainment', Icons.movie_outlined),
+    ('utilities', 'Utilities', Icons.bolt_outlined),
+    ('health', 'Health', Icons.health_and_safety_outlined),
+  ];
 
   bool _hasContacts = false;
   bool _loadingContacts = true;
@@ -202,7 +216,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return;
     }
 
-    final amountPaise = parseRupeesToPaise(_amountController.text);
+    final preferredCurrencyCode =
+        context.read<AppPreferencesService>().preferredCurrencyCode;
+    final amountPaise = parseAmountToMinorUnits(
+      _amountController.text,
+      currencyCode: preferredCurrencyCode,
+    );
     if (amountPaise == null) {
       CustomSnackBar.show(context, message: 'Enter a valid amount', isError: true);
       return;
@@ -216,6 +235,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             description: desc.isEmpty ? 'Expense' : desc,
             totalAmount: amountPaise,
             participants: List<String>.from(_selectedParticipants),
+            category: _selectedCategory,
           );
 
       if (!mounted) return;
@@ -225,6 +245,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       await _loadRecentAmounts();
       setState(() {
         _selectedParticipants.clear();
+        _selectedCategory = 'other';
       });
     } catch (e) {
       developer.log('Add expense error: $e');
@@ -239,10 +260,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final totalPaise = parseRupeesToPaise(_amountController.text) ?? 0;
-    final totalAmount = totalPaise / 100.0;
-    final perPerson =
-        _selectedParticipants.isEmpty ? 0 : totalAmount / (_selectedParticipants.length + 1);
+    final preferredCurrencyCode =
+        context.watch<AppPreferencesService>().preferredCurrencyCode;
+    final currency = AppCurrencies.byCode(preferredCurrencyCode);
+    final totalPaise = parseAmountToMinorUnits(
+          _amountController.text,
+          currencyCode: preferredCurrencyCode,
+        ) ??
+        0;
+    final perPersonMinorUnits = _selectedParticipants.isEmpty
+        ? 0
+        : (totalPaise / (_selectedParticipants.length + 1)).round();
     final bottomClearance = 120.0 + mediaQuery.viewPadding.bottom;
 
     if (_loadingContacts) {
@@ -309,7 +337,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     decoration: InputDecoration(
                       labelText: 'Amount',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      prefixText: 'Rs  ',
+                      prefixText: currency.symbol,
                       hintText: '0.00',
                       filled: true,
                       fillColor: Theme.of(context).colorScheme.surface,
@@ -331,11 +359,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           final paise = _recentAmountsPaise[index];
-                          final rupees = paise / 100;
                           return ActionChip(
-                            label: Text('Rs ${rupees.toStringAsFixed(2)}'),
+                            label: Text(
+                              formatMinorUnits(
+                                paise,
+                                currencyCode: preferredCurrencyCode,
+                              ),
+                            ),
                             onPressed: () {
-                              _amountController.text = rupees.toStringAsFixed(2);
+                              _amountController.text = formatMinorUnitsValue(
+                                paise,
+                                currencyCode: preferredCurrencyCode,
+                              );
                               setState(() {});
                             },
                           );
@@ -353,6 +388,26 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                       fillColor: Theme.of(context).colorScheme.surface,
                     ),
                     maxLength: 50,
+                  ),
+                  AppDimensions.h10(context),
+                  // Category picker
+                  SizedBox(
+                    height: 40,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: _categories.map((cat) {
+                        final isSelected = _selectedCategory == cat.$1;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            avatar: Icon(cat.$3, size: 16),
+                            label: Text(cat.$2),
+                            selected: isSelected,
+                            onSelected: (_) => setState(() => _selectedCategory = cat.$1),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
                   AppDimensions.h20(context),
                   Container(
@@ -372,7 +427,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           children: [
                             Text('Total:', style: AppTextStyles.labelLarge(context)),
                             Text(
-                              'Rs ${totalAmount.toStringAsFixed(2)}',
+                              formatMinorUnits(
+                                totalPaise,
+                                currencyCode: preferredCurrencyCode,
+                              ),
                               style: AppTextStyles.currency(context),
                             ),
                           ],
@@ -386,7 +444,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                               style: AppTextStyles.bodySmall(context),
                             ),
                             Text(
-                              'Rs ${perPerson.toStringAsFixed(2)}/person',
+                              '${formatMinorUnits(
+                                perPersonMinorUnits,
+                                currencyCode: preferredCurrencyCode,
+                              )}/person',
                               style: AppTextStyles.labelLarge(context).copyWith(
                                 color: Theme.of(context).colorScheme.primary,
                               ),

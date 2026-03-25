@@ -1,4 +1,11 @@
-int? parseRupeesToPaise(String input) {
+import 'package:intl/intl.dart';
+
+import '../constants/app_currencies.dart';
+
+int? parseAmountToMinorUnits(
+  String input, {
+  String? currencyCode,
+}) {
   var text = input.trim();
   if (text.isEmpty) return null;
 
@@ -29,13 +36,41 @@ int? parseRupeesToPaise(String input) {
     return null;
   }
 
-  final paise = (whole * 100) + frac;
-  if (paise <= 0) return null;
-  return paise;
+  final minorUnits = (whole * 100) + frac;
+  if (minorUnits <= 0) return null;
+  return minorUnits;
+}
+
+int? parseRupeesToPaise(String input) {
+  return parseAmountToMinorUnits(input, currencyCode: AppCurrencies.defaultCode);
+}
+
+String formatMinorUnits(
+  int minorUnits, {
+  String? currencyCode,
+  bool absolute = false,
+}) {
+  final currency = AppCurrencies.byCode(currencyCode);
+  final amount = (absolute ? minorUnits.abs() : minorUnits) / 100.0;
+  final formatter = NumberFormat.currency(
+    locale: currency.locale,
+    symbol: currency.symbol,
+    decimalDigits: currency.decimalDigits,
+  );
+  return formatter.format(amount);
+}
+
+String formatMinorUnitsValue(
+  int minorUnits, {
+  String? currencyCode,
+  bool absolute = false,
+}) {
+  final currency = AppCurrencies.byCode(currencyCode);
+  final amount = (absolute ? minorUnits.abs() : minorUnits) / 100.0;
+  return amount.toStringAsFixed(currency.decimalDigits);
 }
 
 String formatPaise(int paise) {
-  final rupees = paise.abs() / 100.0;
-  return rupees.toStringAsFixed(2);
+  return formatMinorUnitsValue(paise, currencyCode: AppCurrencies.defaultCode);
 }
 
