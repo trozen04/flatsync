@@ -12,6 +12,11 @@ subprojects {
             extensions.configure<com.android.build.api.dsl.LibraryExtension>("android") {
                 compileSdk = 36
                 buildToolsVersion = "36.0.0"  // change to "35.0.0" if you only have 35 installed
+
+                // Fix for isar_flutter_libs namespace issue with AGP 8+
+                if (project.name == "isar_flutter_libs") {
+                    namespace = "dev.isar.isar_flutter_libs"
+                }
             }
         }
 

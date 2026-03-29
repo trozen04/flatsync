@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_text_styles.dart';
 
 class DetailDialog extends StatelessWidget {
   final String title;
@@ -16,7 +17,8 @@ class DetailDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = accentColor ?? AppColors.primary;
-    
+    final surface = Theme.of(context).colorScheme.surface;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       elevation: 0,
@@ -24,11 +26,12 @@ class DetailDialog extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: surface,
           borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.borderLight),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.18),
               blurRadius: 30,
               offset: const Offset(0, 10),
             ),
@@ -40,7 +43,7 @@ class DetailDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.10),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.info_outline, color: color, size: 32),
@@ -48,10 +51,8 @@ class DetailDialog extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               title,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+              style: AppTextStyles.headlineSmall(context).copyWith(
+                fontWeight: FontWeight.w700,
               ),
               textAlign: TextAlign.center,
             ),
@@ -61,7 +62,7 @@ class DetailDialog extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(item.icon, size: 20, color: color.withOpacity(0.7)),
+                  Icon(item.icon, size: 20, color: color.withValues(alpha: 0.7)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -69,19 +70,13 @@ class DetailDialog extends StatelessWidget {
                       children: [
                         Text(
                           item.label,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: AppTextStyles.labelSmall(context),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           item.value,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: item.valueColor ?? AppColors.textPrimary,
-                            fontWeight: FontWeight.w600,
+                          style: AppTextStyles.titleSmall(context).copyWith(
+                            color: item.valueColor,
                           ),
                         ),
                       ],
@@ -103,13 +98,9 @@ class DetailDialog extends StatelessWidget {
                   ),
                   elevation: 0,
                 ),
-                child: const Text(
+                child: Text(
                   'Close',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
+                  style: AppTextStyles.buttonText(context),
                 ),
               ),
             ),

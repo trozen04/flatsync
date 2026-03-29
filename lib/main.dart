@@ -11,10 +11,12 @@ import 'package:flatsync/services/biometric_auth_service.dart';
 import 'package:flatsync/services/contact_service.dart';
 import 'package:flatsync/services/expense_service.dart';
 import 'package:flatsync/services/notification_service.dart';
+import 'package:flatsync/services/interstitial_ad_service.dart';
 import 'package:flatsync/bloc/contact_provider.dart';
 import 'package:flatsync/screens/splash/splash_screen.dart';
 import 'package:flatsync/constants/app_theme.dart';
 import 'package:flatsync/routes/app_routes.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
@@ -67,6 +69,7 @@ void _showLocalNotification(RemoteMessage message) {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await MobileAds.instance.initialize();
 
   // Background handler
   FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
@@ -95,6 +98,7 @@ Future<void> main() async {
   final contactService = ContactService(apiService);
   final expenseService = ExpenseService(apiService, isarService);
   final notificationService = NotificationService(apiService);
+  final interstitialAdService = InterstitialAdService();
   // Silent server wake-up
   apiService.wakeUpServer();
 
@@ -108,6 +112,7 @@ Future<void> main() async {
         Provider.value(value: contactService),
         Provider.value(value: expenseService),
         Provider.value(value: notificationService),
+        Provider.value(value: interstitialAdService),
         ChangeNotifierProvider.value(value: appPreferencesService),
         ChangeNotifierProvider(
           create: (_) => ContactProvider(isarService, contactService),

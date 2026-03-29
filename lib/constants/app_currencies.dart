@@ -20,7 +20,7 @@ class AppCurrencies {
   static const AppCurrency inr = AppCurrency(
     code: 'INR',
     label: 'Indian Rupee',
-    symbol: 'INR ',
+    symbol: 'Rs. ',
     locale: 'en_IN',
   );
 

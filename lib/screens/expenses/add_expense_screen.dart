@@ -16,7 +16,9 @@ import '../../services/app_preferences_service.dart';
 import '../../services/isar_service.dart';
 import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
+import '../../services/interstitial_ad_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/network_error_handler.dart';
 import '../../utils/money_utils.dart';
 import '../../widgets/contact_identity_details.dart';
 import '../contacts/contact_selection_screen.dart';
@@ -51,6 +53,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   bool _hasContacts = false;
   bool _loadingContacts = true;
   bool _submitting = false;
+  late final InterstitialAdService _interstitialAd;
   StreamSubscription<int>? _expenseUpdatesSub;
   StreamSubscription<int>? _contactUpdatesSub;
   Future<void>? _contactsLoadInFlight;
@@ -60,6 +63,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   @override
   void initState() {
     super.initState();
+    _interstitialAd = context.read<InterstitialAdService>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _loadLocalContacts();
@@ -141,10 +145,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     final future = (() async {
       try {
-        final previewContacts = await context.read<IsarService>().getContactsPage(
-          offset: 0,
-          limit: _previewContactsPageSize,
-        );
+        final previewContacts =
+            await context.read<IsarService>().getContactsPage(
+                  offset: 0,
+                  limit: _previewContactsPageSize,
+                );
         if (mounted) {
           setState(() {
             _hasContacts = previewContacts.isNotEmpty;
@@ -173,7 +178,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   Future<void> _syncContactsFromBalances({bool forceRefresh = false}) async {
     final now = DateTime.now();
     if (_lastBalanceContactSyncAt != null &&
-        now.difference(_lastBalanceContactSyncAt!) < const Duration(seconds: 30)) {
+        now.difference(_lastBalanceContactSyncAt!) <
+            const Duration(seconds: 30)) {
       return;
     }
     _lastBalanceContactSyncAt = now;
@@ -182,7 +188,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       final expenseService = context.read<ExpenseService>();
       final contactService = context.read<ContactService>();
       final isar = context.read<IsarService>();
-      final balances = await expenseService.getBalances(forceRefresh: forceRefresh);
+      final balances =
+          await expenseService.getBalances(forceRefresh: forceRefresh);
       if (balances.isNotEmpty) {
         final contacts = expenseService.getCachedBalanceContacts();
         if (contacts.isNotEmpty) {
@@ -212,7 +219,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
 
     if (_selectedParticipants.isEmpty) {
-      CustomSnackBar.show(context, message: 'Select at least one participant', isError: true);
+      CustomSnackBar.show(context,
+          message: 'Select at least one participant', isError: true);
       return;
     }
 
@@ -223,7 +231,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       currencyCode: preferredCurrencyCode,
     );
     if (amountPaise == null) {
-      CustomSnackBar.show(context, message: 'Enter a valid amount', isError: true);
+      CustomSnackBar.show(context,
+          message: 'Enter a valid amount', isError: true);
       return;
     }
 
@@ -238,7 +247,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             category: _selectedCategory,
           );
 
-      if (!mounted) return;
       CustomSnackBar.show(context, message: 'Expense added successfully');
       _descController.clear();
       _amountController.clear();
@@ -247,11 +255,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         _selectedParticipants.clear();
         _selectedCategory = 'other';
       });
+      // Trigger interstitial — using pre-captured reference, safe after async gaps
+      _interstitialAd.onExpenseAdded();
     } catch (e) {
       developer.log('Add expense error: $e');
-      if (mounted) {
-        CustomSnackBar.show(context, message: 'Failed to add expense', isError: true);
-      }
+      if (!mounted) return;
+      CustomSnackBar.show(
+        context,
+        message: NetworkErrorHandler.moneyWrite(),
+        isError: true,
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -285,7 +298,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
           child: ListView(
             children: [
               AppDimensions.h100(context),
-              const Icon(Icons.people_outline, size: 64, color: AppColors.textTertiary),
+              const Icon(Icons.people_outline,
+                  size: 64, color: AppColors.textTertiary),
               AppDimensions.h20(context),
               Center(
                 child: Text(
@@ -306,7 +320,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   text: 'Import Contacts',
                   icon: Icons.person_add,
                   onPressed: () async {
-                    final result = await Navigator.pushNamed(context, '/contact-selection');
+                    final result = await Navigator.pushNamed(
+                        context, '/contact-selection');
                     if (result != null) {
                       await _loadLocalContacts();
                     }
@@ -322,7 +337,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.35),
+        backgroundColor: Theme.of(context).colorScheme.background,
         resizeToAvoidBottomInset: true,
         body: RefreshIndicator(
           onRefresh: _loadLocalContacts,
@@ -330,170 +345,187 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: AppDimensions.appMargin(context),
             child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: _amountController,
-                    decoration: InputDecoration(
-                      labelText: 'Amount',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      prefixText: currency.symbol,
-                      hintText: '0.00',
-                      filled: true,
-                      fillColor: Theme.of(context).colorScheme.surface,
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d{0,6}(\.\d{0,2})?')),
-                    ],
-                    onChanged: (_) => setState(() {}),
-                    style: AppTextStyles.currencyLarge(context),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _amountController,
+                  decoration: InputDecoration(
+                    labelText: 'Amount',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    prefixText: currency.symbol,
+                    hintText: '0.00',
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
                   ),
-                  if (_recentAmountsPaise.isNotEmpty) ...[
-                    AppDimensions.h10(context),
-                    SizedBox(
-                      height: 36,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _recentAmountsPaise.length > 4 ? 4 : _recentAmountsPaise.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (context, index) {
-                          final paise = _recentAmountsPaise[index];
-                          return ActionChip(
-                            label: Text(
-                              formatMinorUnits(
-                                paise,
-                                currencyCode: preferredCurrencyCode,
-                              ),
-                            ),
-                            onPressed: () {
-                              _amountController.text = formatMinorUnitsValue(
-                                paise,
-                                currencyCode: preferredCurrencyCode,
-                              );
-                              setState(() {});
-                            },
-                          );
-                        },
-                      ),
-                    ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d{0,6}(\.\d{0,2})?')),
                   ],
-                  AppDimensions.h20(context),
-                  TextField(
-                    controller: _descController,
-                    decoration: InputDecoration(
-                      labelText: 'Description (Optional)',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      filled: true,
-                      fillColor: Theme.of(context).colorScheme.surface,
-                    ),
-                    maxLength: 50,
-                  ),
+                  onChanged: (_) => setState(() {}),
+                  style: AppTextStyles.currencyLarge(context),
+                ),
+                if (_recentAmountsPaise.isNotEmpty) ...[
                   AppDimensions.h10(context),
-                  // Category picker
                   SizedBox(
-                    height: 40,
-                    child: ListView(
+                    height: 36,
+                    child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      children: _categories.map((cat) {
-                        final isSelected = _selectedCategory == cat.$1;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            avatar: Icon(cat.$3, size: 16),
-                            label: Text(cat.$2),
-                            selected: isSelected,
-                            onSelected: (_) => setState(() => _selectedCategory = cat.$1),
+                      itemCount: _recentAmountsPaise.length > 4
+                          ? 4
+                          : _recentAmountsPaise.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        final paise = _recentAmountsPaise[index];
+                        return ActionChip(
+                          label: Text(
+                            formatMinorUnits(
+                              paise,
+                              currencyCode: preferredCurrencyCode,
+                            ),
                           ),
+                          onPressed: () {
+                            _amountController.text = formatMinorUnitsValue(
+                              paise,
+                              currencyCode: preferredCurrencyCode,
+                            );
+                            setState(() {});
+                          },
                         );
-                      }).toList(),
+                      },
                     ),
                   ),
-                  AppDimensions.h20(context),
-                  Container(
-                    padding: AppDimensions.containerPadding(context),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.55),
-                      ),
-                      boxShadow: AppShadows.card,
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Total:', style: AppTextStyles.labelLarge(context)),
-                            Text(
-                              formatMinorUnits(
-                                totalPaise,
-                                currencyCode: preferredCurrencyCode,
-                              ),
-                              style: AppTextStyles.currency(context),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Split with ${_selectedParticipants.length} ${_selectedParticipants.length == 1 ? "person" : "people"}',
-                              style: AppTextStyles.bodySmall(context),
-                            ),
-                            Text(
-                              '${formatMinorUnits(
-                                perPersonMinorUnits,
-                                currencyCode: preferredCurrencyCode,
-                              )}/person',
-                              style: AppTextStyles.labelLarge(context).copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        AppDimensions.h10(context),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              ActionChip(
-                                label: Text(_selectedParticipants.isEmpty ? 'Choose people' : 'Edit people'),
-                                avatar: const Icon(Icons.group_add, size: 18),
-                                onPressed: _openParticipantPicker,
-                              ),
-                              ..._selectedParticipants.take(6).map((phone) {
-                                final c = _contactByPhone(phone);
-                                final name = (c?.name ?? '').trim();
-                                final label = name.isNotEmpty ? name : phone;
-                                return InputChip(
-                                  label: Text(label, overflow: TextOverflow.ellipsis),
-                                  onDeleted: () => setState(() => _selectedParticipants.remove(phone)),
-                                );
-                              }),
-                              if (_selectedParticipants.length > 6)
-                                Chip(label: Text('+${_selectedParticipants.length - 6} more')),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  AppDimensions.h20(context),
-                  CustomButton(
-                    text: 'Add Expense',
-                    onPressed: _addExpense,
-                    isLoading: _submitting,
-                  ),
-                  SizedBox(height: bottomClearance),
                 ],
-              ),
+                AppDimensions.h20(context),
+                TextField(
+                  controller: _descController,
+                  decoration: InputDecoration(
+                    labelText: 'Description (Optional)',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
+                  ),
+                  maxLength: 50,
+                ),
+                AppDimensions.h10(context),
+                // Category picker
+                SizedBox(
+                  height: 40,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: _categories.map((cat) {
+                      final isSelected = _selectedCategory == cat.$1;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          avatar: Icon(cat.$3, size: 16),
+                          label: Text(cat.$2),
+                          selected: isSelected,
+                          onSelected: (_) =>
+                              setState(() => _selectedCategory = cat.$1),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                AppDimensions.h20(context),
+                Container(
+                  padding: AppDimensions.containerPadding(context),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: 0.55),
+                    ),
+                    boxShadow: AppShadows.card,
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Total:',
+                              style: AppTextStyles.labelLarge(context)),
+                          Text(
+                            formatMinorUnits(
+                              totalPaise,
+                              currencyCode: preferredCurrencyCode,
+                            ),
+                            style: AppTextStyles.currency(context),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Split with ${_selectedParticipants.length} ${_selectedParticipants.length == 1 ? "person" : "people"}',
+                            style: AppTextStyles.bodySmall(context),
+                          ),
+                          Text(
+                            '${formatMinorUnits(
+                              perPersonMinorUnits,
+                              currencyCode: preferredCurrencyCode,
+                            )}/person',
+                            style: AppTextStyles.labelLarge(context).copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      AppDimensions.h10(context),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ActionChip(
+                              label: Text(_selectedParticipants.isEmpty
+                                  ? 'Choose people'
+                                  : 'Edit people'),
+                              avatar: const Icon(Icons.group_add, size: 18),
+                              onPressed: _openParticipantPicker,
+                            ),
+                            ..._selectedParticipants.take(6).map((phone) {
+                              final c = _contactByPhone(phone);
+                              final name = (c?.name ?? '').trim();
+                              final label = name.isNotEmpty ? name : phone;
+                              return InputChip(
+                                label: Text(label,
+                                    overflow: TextOverflow.ellipsis),
+                                onDeleted: () => setState(
+                                    () => _selectedParticipants.remove(phone)),
+                              );
+                            }),
+                            if (_selectedParticipants.length > 6)
+                              Chip(
+                                  label: Text(
+                                      '+${_selectedParticipants.length - 6} more')),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AppDimensions.h20(context),
+                CustomButton(
+                  text: 'Add Expense',
+                  onPressed: _addExpense,
+                  isLoading: _submitting,
+                ),
+                SizedBox(height: bottomClearance),
+              ],
             ),
           ),
+        ),
       ),
     );
   }
@@ -511,7 +543,8 @@ class _ParticipantPickerSheet extends StatefulWidget {
   });
 
   @override
-  State<_ParticipantPickerSheet> createState() => _ParticipantPickerSheetState();
+  State<_ParticipantPickerSheet> createState() =>
+      _ParticipantPickerSheetState();
 }
 
 class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
@@ -520,7 +553,8 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
   final Map<String, ContactModel> _selectedContactsByPhone = {};
   final List<ContactModel> _contacts = [];
   String _query = '';
-  late final List<String> _selected = List<String>.from(widget.initiallySelected);
+  late final List<String> _selected =
+      List<String>.from(widget.initiallySelected);
   bool _loading = true;
   bool _loadingMore = false;
   bool _loadInProgress = false;
@@ -585,10 +619,10 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
 
     try {
       final page = await context.read<IsarService>().getContactsPage(
-        offset: nextOffset,
-        limit: _pageSize,
-        query: requestQuery,
-      );
+            offset: nextOffset,
+            limit: _pageSize,
+            query: requestQuery,
+          );
       if (!mounted) return;
       if (_pendingResetAfterLoad && !reset) return;
       if (requestQuery != _query) return;
@@ -637,7 +671,8 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
   List<ContactModel> _buildSelectionResult() {
     return _selected
         .map(
-          (phone) => _selectedContactsByPhone[phone] ??
+          (phone) =>
+              _selectedContactsByPhone[phone] ??
               _contacts.firstWhere(
                 (contact) => contact.phoneNumber == phone,
                 orElse: () => ContactModel(phoneNumber: phone, name: phone),
@@ -683,7 +718,8 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                     label: const Text('Add'),
                   ),
                   TextButton(
-                    onPressed: () => Navigator.pop(context, _buildSelectionResult()),
+                    onPressed: () =>
+                        Navigator.pop(context, _buildSelectionResult()),
                     child: Text('Done (${_selected.length})'),
                   ),
                 ],
@@ -728,7 +764,9 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                _query.isEmpty ? 'No contacts yet' : 'No results',
+                                _query.isEmpty
+                                    ? 'No contacts yet'
+                                    : 'No results',
                                 style: AppTextStyles.bodyMedium(context),
                               ),
                               if (_query.isEmpty) ...[
@@ -750,15 +788,19 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                             if (index >= _contacts.length) {
                               return const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 16),
-                                child: Center(child: CircularProgressIndicator()),
+                                child:
+                                    Center(child: CircularProgressIndicator()),
                               );
                             }
 
                             final contact = _contacts[index];
                             final phone = contact.phoneNumber;
-                            final selected = phone != null && _selected.contains(phone);
+                            final selected =
+                                phone != null && _selected.contains(phone);
 
-                            final bg = selected ? scheme.primaryContainer : scheme.surface;
+                            final bg = selected
+                                ? scheme.primaryContainer
+                                : scheme.surface;
                             final fg = selected
                                 ? scheme.onPrimaryContainer
                                 : AppColors.textPrimary;
@@ -780,7 +822,9 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                                 boxShadow: AppShadows.card,
                               ),
                               child: InkWell(
-                                onTap: phone == null ? null : () => _toggleSelection(contact),
+                                onTap: phone == null
+                                    ? null
+                                    : () => _toggleSelection(contact),
                                 child: Row(
                                   children: [
                                     Container(
@@ -813,16 +857,21 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
                                         name: contact.name ?? 'Unknown',
                                         phoneNumber: contact.phoneNumber,
                                         isVerified: contact.isRegistered,
-                                        nameStyle: AppTextStyles.titleMedium(context)
-                                            .copyWith(fontSize: 15, color: fg),
-                                        phoneStyle: AppTextStyles.bodySmall(context).copyWith(
+                                        nameStyle:
+                                            AppTextStyles.titleMedium(context)
+                                                .copyWith(
+                                                    fontSize: 15, color: fg),
+                                        phoneStyle:
+                                            AppTextStyles.bodySmall(context)
+                                                .copyWith(
                                           fontSize: 12,
                                           color: secondaryFg,
                                         ),
                                       ),
                                     ),
                                     AnimatedContainer(
-                                      duration: const Duration(milliseconds: 160),
+                                      duration:
+                                          const Duration(milliseconds: 160),
                                       width: 26,
                                       height: 26,
                                       decoration: BoxDecoration(

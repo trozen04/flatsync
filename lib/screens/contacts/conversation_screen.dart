@@ -16,13 +16,14 @@ import '../../services/contact_service.dart';
 import '../../services/isar_service.dart';
 import '../../constants/app_shadows.dart';
 import '../../widgets/detail_dialog.dart';
-import '../../widgets/shadowed_app_bar.dart';
+import '../../widgets/gradient_app_bar.dart';
 import '../../widgets/loading_indicator.dart';
 import '../../utils/money_utils.dart';
 import '../../utils/date_utils.dart';
 import '../../utils/phone_utils.dart';
 import '../../utils/custom_snackbar.dart';
-import '../../widgets/contact_identity_details.dart';
+import '../../utils/network_error_handler.dart';
+import '../../services/interstitial_ad_service.dart';
 import '../../widgets/app_dialog.dart';
 
 class ConversationScreen extends StatefulWidget {
@@ -44,6 +45,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   String? _nextCursor;
   int _balance = 0;
   String? _currentUserId;
+  late final InterstitialAdService _interstitialAd;
   final ScrollController _scrollController = ScrollController();
 
   StreamSubscription<int>? _updatesSub;
@@ -51,6 +53,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   @override
   void initState() {
     super.initState();
+    _interstitialAd = context.read<InterstitialAdService>();
     _loadCurrentUserId();
     _scrollController.addListener(_onScroll);
     _updatesSub = context.read<ExpenseService>().updates.listen((_) {
@@ -69,6 +72,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (contactId != null && contactId.isNotEmpty) {
         final page = await expenseService.getTimeline(
           withUserId: contactId,
+          withUserPhone: widget.contact.phoneNumber,
           forceRefresh: false,
         );
         localData = page.items;
@@ -113,6 +117,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (contactId != null && contactId.isNotEmpty) {
         final page = await expenseService.getTimeline(
           withUserId: contactId,
+          withUserPhone: widget.contact.phoneNumber,
           forceRefresh: true,
         );
         serverData = page.items;
@@ -169,7 +174,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   String _canonicalPhone(String? value) => PhoneUtils.canonical(value);
 
-Future<String?> _ensureResolvedContactId() async {
+  Future<String?> _ensureResolvedContactId() async {
     final existing = widget.contact.contactId;
     if (existing != null && existing.isNotEmpty) return existing;
 
@@ -226,6 +231,7 @@ Future<String?> _ensureResolvedContactId() async {
       final expenseService = context.read<ExpenseService>();
       final page = await expenseService.getTimeline(
         withUserId: contactId,
+        withUserPhone: widget.contact.phoneNumber,
         cursor: _nextCursor,
         forceRefresh: true,
       );
@@ -300,7 +306,8 @@ Future<String?> _ensureResolvedContactId() async {
       final proceed = await AppConfirmDialog.show(
         context,
         title: 'Update for Everyone?',
-        message: 'This expense is shared with $participantsCount people. Editing will update the amount for all of them.',
+        message:
+            'This expense is shared with $participantsCount people. Editing will update the amount for all of them.',
         icon: Icons.group_outlined,
         variant: DialogVariant.warning,
         confirmLabel: 'Continue',
@@ -323,17 +330,17 @@ Future<String?> _ensureResolvedContactId() async {
       CustomSnackBar.show(context, message: 'Expense updated');
       await _syncFromServer();
     } catch (e) {
-      if (mounted) {
-        CustomSnackBar.show(
-          context,
-          message: 'Failed to update expense',
-          isError: true,
-        );
-      }
+      if (!mounted) return;
+      CustomSnackBar.show(
+        context,
+        message: NetworkErrorHandler.moneyWrite(),
+        isError: true,
+      );
     }
   }
 
-  Future<void> _handleExpenseDelete(String expenseId, {required int participantsCount}) async {
+  Future<void> _handleExpenseDelete(String expenseId,
+      {required int participantsCount}) async {
     final message = participantsCount > 1
         ? 'This expense is shared with $participantsCount people. Deleting will remove it for all of them.'
         : 'Are you sure you want to delete this expense?';
@@ -349,13 +356,12 @@ Future<String?> _ensureResolvedContactId() async {
       CustomSnackBar.show(context, message: 'Expense deleted');
       await _syncFromServer();
     } catch (e) {
-      if (mounted) {
-        CustomSnackBar.show(
-          context,
-          message: 'Failed to delete expense',
-          isError: true,
-        );
-      }
+      if (!mounted) return;
+      CustomSnackBar.show(
+        context,
+        message: NetworkErrorHandler.moneyWrite(),
+        isError: true,
+      );
     }
   }
 
@@ -372,13 +378,12 @@ Future<String?> _ensureResolvedContactId() async {
       CustomSnackBar.show(context, message: 'Transaction deleted');
       await _syncFromServer();
     } catch (e) {
-      if (mounted) {
-        CustomSnackBar.show(
-          context,
-          message: 'Failed to delete transaction',
-          isError: true,
-        );
-      }
+      if (!mounted) return;
+      CustomSnackBar.show(
+        context,
+        message: NetworkErrorHandler.moneyWrite(),
+        isError: true,
+      );
     }
   }
 
@@ -411,7 +416,8 @@ Future<String?> _ensureResolvedContactId() async {
           participantsCount: participantsCount,
         );
       } else if (onlyAction == 'delete_expense') {
-        await _handleExpenseDelete(entryId, participantsCount: participantsCount);
+        await _handleExpenseDelete(entryId,
+            participantsCount: participantsCount);
       } else if (onlyAction == 'delete_transaction') {
         await _handleTransactionDelete(entryId);
       }
@@ -421,13 +427,20 @@ Future<String?> _ensureResolvedContactId() async {
     final action = await AppConfirmDialog.show(
       context,
       title: type == 'expense' ? 'Expense Options' : 'Transaction Options',
-      icon: type == 'expense' ? Icons.receipt_long_outlined : Icons.payments_outlined,
+      icon: type == 'expense'
+          ? Icons.receipt_long_outlined
+          : Icons.payments_outlined,
       variant: DialogVariant.info,
       confirmLabel: canEditExpense ? 'Edit' : 'Delete',
-      cancelLabel: canDeleteExpense || canDeleteTransaction ? 'Delete' : 'Cancel',
+      cancelLabel:
+          canDeleteExpense || canDeleteTransaction ? 'Delete' : 'Cancel',
     ).then((v) {
-      if (v == true) return canEditExpense ? 'edit_expense' : (canDeleteExpense ? 'delete_expense' : 'delete_transaction');
-      if (v == false && (canDeleteExpense || canDeleteTransaction)) return canDeleteExpense ? 'delete_expense' : 'delete_transaction';
+      if (v == true)
+        return canEditExpense
+            ? 'edit_expense'
+            : (canDeleteExpense ? 'delete_expense' : 'delete_transaction');
+      if (v == false && (canDeleteExpense || canDeleteTransaction))
+        return canDeleteExpense ? 'delete_expense' : 'delete_transaction';
       return null;
     });
 
@@ -450,10 +463,12 @@ Future<String?> _ensureResolvedContactId() async {
     required String currentDescription,
     required int currentTotalAmountPaise,
   }) async {
-    final currencyCode = context.read<AppPreferencesService>().preferredCurrencyCode;
+    final currencyCode =
+        context.read<AppPreferencesService>().preferredCurrencyCode;
     final currency = AppCurrencies.byCode(currencyCode);
     final amountCtrl = TextEditingController(
-      text: formatMinorUnitsValue(currentTotalAmountPaise, currencyCode: currencyCode),
+      text: formatMinorUnitsValue(currentTotalAmountPaise,
+          currencyCode: currencyCode),
     );
     final descCtrl = TextEditingController(text: currentDescription);
 
@@ -463,7 +478,8 @@ Future<String?> _ensureResolvedContactId() async {
         title: 'Edit Expense',
         icon: Icons.edit_outlined,
         fields: [
-          AppFormField(controller: descCtrl, label: 'Description', autofocus: true),
+          AppFormField(
+              controller: descCtrl, label: 'Description', autofocus: true),
           AppFormField(
             controller: amountCtrl,
             label: 'Total Amount (${currency.code})',
@@ -473,20 +489,24 @@ Future<String?> _ensureResolvedContactId() async {
         ],
         confirmLabel: 'Save',
         onConfirm: () {
-          final v = parseAmountToMinorUnits(amountCtrl.text, currencyCode: currencyCode);
+          final v = parseAmountToMinorUnits(amountCtrl.text,
+              currencyCode: currencyCode);
           if (v == null) return 'Enter a valid amount';
           return null;
         },
       ),
     );
     if (confirmed != true) return null;
-    final amountPaise = parseAmountToMinorUnits(amountCtrl.text, currencyCode: currencyCode);
+    final amountPaise =
+        parseAmountToMinorUnits(amountCtrl.text, currencyCode: currencyCode);
     if (amountPaise == null) return null;
     return {'amountPaise': amountPaise, 'description': descCtrl.text.trim()};
   }
 
-  Future<Map<String, dynamic>?> _showEntryDialog({required bool isTransaction}) async {
-    final currencyCode = context.read<AppPreferencesService>().preferredCurrencyCode;
+  Future<Map<String, dynamic>?> _showEntryDialog(
+      {required bool isTransaction}) async {
+    final currencyCode =
+        context.read<AppPreferencesService>().preferredCurrencyCode;
     final currency = AppCurrencies.byCode(currencyCode);
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -495,7 +515,9 @@ Future<String?> _ensureResolvedContactId() async {
       context: context,
       builder: (_) => AppFormDialog(
         title: isTransaction ? 'Add Transaction' : 'Add Expense',
-        icon: isTransaction ? Icons.payments_outlined : Icons.receipt_long_outlined,
+        icon: isTransaction
+            ? Icons.payments_outlined
+            : Icons.receipt_long_outlined,
         accentColor: isTransaction ? AppColors.success : AppColors.primary,
         fields: [
           AppFormField(
@@ -515,14 +537,16 @@ Future<String?> _ensureResolvedContactId() async {
         ],
         confirmLabel: 'Save',
         onConfirm: () {
-          final v = parseAmountToMinorUnits(amountCtrl.text, currencyCode: currencyCode);
+          final v = parseAmountToMinorUnits(amountCtrl.text,
+              currencyCode: currencyCode);
           if (v == null) return 'Enter a valid amount';
           return null;
         },
       ),
     );
     if (confirmed != true) return null;
-    final amountPaise = parseAmountToMinorUnits(amountCtrl.text, currencyCode: currencyCode);
+    final amountPaise =
+        parseAmountToMinorUnits(amountCtrl.text, currencyCode: currencyCode);
     if (amountPaise == null) return null;
     return {'amountPaise': amountPaise, 'description': descCtrl.text.trim()};
   }
@@ -551,13 +575,16 @@ Future<String?> _ensureResolvedContactId() async {
         totalAmount: amount,
         participants: [phone],
       );
+      _interstitialAd.onExpenseAdded();
       await _syncFromServer();
     } catch (e) {
       developer.log('Add chat expense error: $e');
-      if (mounted) {
-        CustomSnackBar.show(context,
-            message: 'Failed to add expense', isError: true);
-      }
+      if (!mounted) return;
+      CustomSnackBar.show(
+        context,
+        message: NetworkErrorHandler.moneyWrite(),
+        isError: true,
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -587,13 +614,16 @@ Future<String?> _ensureResolvedContactId() async {
             toPhone: (toUserId == null || toUserId.isEmpty) ? toPhone : null,
             amount: amount,
           );
+      _interstitialAd.onExpenseAdded();
       await _syncFromServer();
     } catch (e) {
       developer.log('Add chat transaction error: $e');
-      if (mounted) {
-        CustomSnackBar.show(context,
-            message: 'Failed to add transaction', isError: true);
-      }
+      if (!mounted) return;
+      CustomSnackBar.show(
+        context,
+        message: NetworkErrorHandler.moneyWrite(),
+        isError: true,
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -615,26 +645,10 @@ Future<String?> _ensureResolvedContactId() async {
             : 'All settled';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.background,
       resizeToAvoidBottomInset: false,
-      appBar: ShadowedAppBar(
-        child: AppBar(
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          title: ContactIdentityDetails(
-            name: widget.contact.name ?? 'User',
-            phoneNumber: widget.contact.phoneNumber,
-            isVerified: widget.contact.isRegistered,
-            nameStyle: AppTextStyles.titleMedium(context).copyWith(
-              color: Colors.white,
-              fontSize: 16,
-            ),
-            phoneStyle: AppTextStyles.bodySmall(context).copyWith(
-              color: Colors.white70,
-              fontSize: 12,
-            ),
-          ),
-        ),
+      appBar: GradientAppBar(
+        title: widget.contact.name ?? 'Conversation',
       ),
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -729,8 +743,10 @@ Future<String?> _ensureResolvedContactId() async {
                                   final createdBy =
                                       item['createdBy'] as String?;
                                   final isDeleted = item['isDeleted'] == true;
-                                  final deletedBy = item['deletedBy'] as String?;
-                                  final updatedBy = item['updatedBy'] as String?;
+                                  final deletedBy =
+                                      item['deletedBy'] as String?;
+                                  final updatedBy =
+                                      item['updatedBy'] as String?;
                                   final canEditExpense = type == 'expense' &&
                                       entryId != null &&
                                       createdBy == _currentUserId &&
@@ -854,10 +870,13 @@ Future<String?> _ensureResolvedContactId() async {
                                                 type: type,
                                                 entryId: entryId,
                                                 canEditExpense: canEditExpense,
-                                                canDeleteExpense: canDeleteExpense,
-                                                canDeleteTransaction: canDeleteTransaction,
+                                                canDeleteExpense:
+                                                    canDeleteExpense,
+                                                canDeleteTransaction:
+                                                    canDeleteTransaction,
                                                 description: description,
-                                                totalAmount: totalAmount ?? amount,
+                                                totalAmount:
+                                                    totalAmount ?? amount,
                                                 participantsCount: participants,
                                               )
                                           : null,
@@ -871,13 +890,17 @@ Future<String?> _ensureResolvedContactId() async {
                                                 0.75),
                                         decoration: BoxDecoration(
                                           color: isDeleted
-                                              ? AppColors.error.withValues(alpha: 0.04)
-                                              : Theme.of(context).colorScheme.surface,
+                                              ? AppColors.error
+                                                  .withValues(alpha: 0.04)
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .surface,
                                           borderRadius:
                                               BorderRadius.circular(12),
                                           border: Border.all(
                                             color: isDeleted
-                                                ? AppColors.error.withValues(alpha: 0.25)
+                                                ? AppColors.error
+                                                    .withValues(alpha: 0.25)
                                                 : AppColors.border,
                                             width: 1,
                                           ),
@@ -944,15 +967,25 @@ Future<String?> _ensureResolvedContactId() async {
                                                           (value) async {
                                                         final selectedEntryId =
                                                             entryId;
-                                                        if (value == 'edit_expense') {
+                                                        if (value ==
+                                                            'edit_expense') {
                                                           await _handleExpenseEdit(
-                                                            expenseId: selectedEntryId,
-                                                            description: description,
-                                                            totalAmount: totalAmount ?? amount,
-                                                            participantsCount: participants,
+                                                            expenseId:
+                                                                selectedEntryId,
+                                                            description:
+                                                                description,
+                                                            totalAmount:
+                                                                totalAmount ??
+                                                                    amount,
+                                                            participantsCount:
+                                                                participants,
                                                           );
-                                                        } else if (value == 'delete_expense') {
-                                                          await _handleExpenseDelete(selectedEntryId, participantsCount: participants);
+                                                        } else if (value ==
+                                                            'delete_expense') {
+                                                          await _handleExpenseDelete(
+                                                              selectedEntryId,
+                                                              participantsCount:
+                                                                  participants);
                                                         } else if (value ==
                                                             'delete_transaction') {
                                                           await _handleTransactionDelete(
@@ -998,8 +1031,8 @@ Future<String?> _ensureResolvedContactId() async {
                                                       ),
                                                     ),
                                                   Text(
-                                                    AppDateUtils
-                                                        .formatDate(date),
+                                                    AppDateUtils.formatDate(
+                                                        date),
                                                     style: const TextStyle(
                                                         fontSize: 10,
                                                         color: AppColors
@@ -1023,10 +1056,12 @@ Future<String?> _ensureResolvedContactId() async {
                                                             FontWeight.w600,
                                                         fontSize: 14,
                                                         decoration: isDeleted
-                                                            ? TextDecoration.lineThrough
+                                                            ? TextDecoration
+                                                                .lineThrough
                                                             : null,
                                                         color: isDeleted
-                                                            ? AppColors.textSecondary
+                                                            ? AppColors
+                                                                .textSecondary
                                                             : null,
                                                       ),
                                                       maxLines: 2,
@@ -1046,10 +1081,13 @@ Future<String?> _ensureResolvedContactId() async {
                                                       fontWeight:
                                                           FontWeight.bold,
                                                       color: isDeleted
-                                                          ? AppColors.textSecondary
-                                                          : AppColors.textPrimary,
+                                                          ? AppColors
+                                                              .textSecondary
+                                                          : AppColors
+                                                              .textPrimary,
                                                       decoration: isDeleted
-                                                          ? TextDecoration.lineThrough
+                                                          ? TextDecoration
+                                                              .lineThrough
                                                           : null,
                                                     ),
                                                   ),
@@ -1057,37 +1095,56 @@ Future<String?> _ensureResolvedContactId() async {
                                                     const SizedBox(height: 4),
                                                     Row(
                                                       children: [
-                                                        const Icon(Icons.delete_outline, size: 11, color: AppColors.error),
-                                                        const SizedBox(width: 3),
+                                                        const Icon(
+                                                            Icons
+                                                                .delete_outline,
+                                                            size: 11,
+                                                            color: AppColors
+                                                                .error),
+                                                        const SizedBox(
+                                                            width: 3),
                                                         Text(
                                                           deletedBy != null
                                                               ? 'Deleted by $deletedBy'
                                                               : 'Deleted',
-                                                          style: const TextStyle(
+                                                          style:
+                                                              const TextStyle(
                                                             fontSize: 11,
-                                                            color: AppColors.error,
-                                                            fontWeight: FontWeight.w500,
+                                                            color:
+                                                                AppColors.error,
+                                                            fontWeight:
+                                                                FontWeight.w500,
                                                           ),
                                                         ),
                                                       ],
                                                     ),
-                                                  ] else if (updatedBy != null) ...[
+                                                  ] else if (updatedBy !=
+                                                      null) ...[
                                                     const SizedBox(height: 4),
                                                     Row(
                                                       children: [
-                                                        const Icon(Icons.edit_outlined, size: 11, color: AppColors.textSecondary),
-                                                        const SizedBox(width: 3),
+                                                        const Icon(
+                                                            Icons.edit_outlined,
+                                                            size: 11,
+                                                            color: AppColors
+                                                                .textSecondary),
+                                                        const SizedBox(
+                                                            width: 3),
                                                         Text(
                                                           'Edited by $updatedBy',
-                                                          style: const TextStyle(
+                                                          style:
+                                                              const TextStyle(
                                                             fontSize: 11,
-                                                            color: AppColors.textSecondary,
-                                                            fontWeight: FontWeight.w500,
+                                                            color: AppColors
+                                                                .textSecondary,
+                                                            fontWeight:
+                                                                FontWeight.w500,
                                                           ),
                                                         ),
                                                       ],
                                                     ),
-                                                  ] else if (isYouPaid && seenByOther) ...[
+                                                  ] else if (isYouPaid &&
+                                                      seenByOther) ...[
                                                     const SizedBox(height: 4),
                                                     Text(
                                                       _formatSeenLabel(seenAt),
@@ -1147,8 +1204,8 @@ Future<String?> _ensureResolvedContactId() async {
             SafeArea(
               top: false,
               child: Padding(
-                padding: EdgeInsets.fromLTRB(12, 8, 12,
-                    12 + MediaQuery.of(context).viewInsets.bottom),
+                padding: EdgeInsets.fromLTRB(
+                    12, 8, 12, 12 + MediaQuery.of(context).viewInsets.bottom),
                 child: Row(
                   children: [
                     Expanded(

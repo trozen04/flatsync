@@ -45,13 +45,13 @@ class AppSpacing {
   }
   
   static EdgeInsets cardPadding(BuildContext context) {
-    return EdgeInsets.all(responsive(context, lg));
+    return EdgeInsets.all(responsive(context, md));
   }
   
   static EdgeInsets listItemPadding(BuildContext context) {
     return EdgeInsets.symmetric(
       horizontal: responsiveHorizontal(context),
-      vertical: responsive(context, md),
+      vertical: responsive(context, sm),
     );
   }
   

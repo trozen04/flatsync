@@ -7,6 +7,7 @@ import '../auth/biometric_gate_screen.dart';
 import '../auth/login_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../shell/app_shell.dart';
+import '../../constants/app_colors.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_preferences_service.dart';
 import '../../utils/image_assets.dart';
@@ -82,7 +83,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: FadeTransition(
         opacity: _fadeAnim,
         child: Center(

@@ -47,6 +47,16 @@ class AppDimensions {
     );
   }
 
+  static EdgeInsets horizontalMargin(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    return EdgeInsets.symmetric(horizontal: size.width * 0.040);
+  }
+
+  static EdgeInsets compactHorizontalMargin(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    return EdgeInsets.symmetric(horizontal: size.width * 0.032);
+  }
+
   static EdgeInsets containerMargin(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return EdgeInsets.symmetric(
@@ -60,6 +70,19 @@ class AppDimensions {
       horizontal: size.width * 0.020,
       vertical: size.height * 0.020, /// height
     );
+  }
+
+  static EdgeInsets compactCardPadding(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    return EdgeInsets.symmetric(
+      horizontal: size.width * 0.032,
+      vertical: size.height * 0.014,
+    );
+  }
+
+  static EdgeInsets compactCardMargin(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    return EdgeInsets.only(bottom: size.height * 0.010);
   }
 
   static EdgeInsets buttonMargin(BuildContext context) {

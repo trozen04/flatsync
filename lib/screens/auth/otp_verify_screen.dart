@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../../constants/app_dimensions.dart';
 import '../../widgets/custom_button.dart';
+import '../../widgets/gradient_app_bar.dart';
 import '../../services/auth_service.dart';
 import '../../services/isar_service.dart';
 import '../../utils/custom_snackbar.dart';
@@ -31,7 +32,9 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
   bool _obscurePin = true;
 
   Future<void> _verify() async {
-    if (_otpController.text.isEmpty || _nameController.text.isEmpty || _pinController.text.isEmpty) {
+    if (_otpController.text.isEmpty ||
+        _nameController.text.isEmpty ||
+        _pinController.text.isEmpty) {
       CustomSnackBar.show(context, message: 'Fill all fields', isError: true);
       return;
     }
@@ -81,7 +84,7 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        appBar: AppBar(title: const Text('Verify Code')),
+        appBar: const GradientAppBar(title: 'Verify Code'),
         body: SafeArea(
           child: Padding(
             padding: AppDimensions.appMargin(context),
@@ -118,8 +121,11 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
                     labelText: '4-digit PIN',
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscurePin ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _obscurePin = !_obscurePin),
+                      icon: Icon(_obscurePin
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _obscurePin = !_obscurePin),
                     ),
                   ),
                   keyboardType: TextInputType.number,
@@ -144,4 +150,3 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
     );
   }
 }
-

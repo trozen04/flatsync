@@ -9,6 +9,7 @@ import 'api_service.dart';
 import 'contact_service.dart';
 import 'expense_service.dart';
 import 'isar_service.dart';
+import '../utils/network_error_handler.dart';
 
 enum AuthFlow {
   login,
@@ -47,7 +48,8 @@ class AuthService {
   }
 
   String describeOtpDestination(Map<String, dynamic>? responseData) {
-    final label = responseData?['data']?['deliveryChannelLabel']?.toString().trim();
+    final label =
+        responseData?['data']?['deliveryChannelLabel']?.toString().trim();
     if (label != null && label.isNotEmpty) {
       return label;
     }
@@ -55,20 +57,17 @@ class AuthService {
   }
 
   String getAuthErrorMessage(Object error, {required AuthFlow flow}) {
+    if (NetworkErrorHandler.isNetworkIssue(error)) {
+      return NetworkErrorHandler.message(
+        error,
+        fallback: 'Oops! Something went wrong',
+      );
+    }
+
     if (error is DioException) {
       final statusCode = error.response?.statusCode;
       final serverError = _extractServerError(error);
       final lower = serverError.toLowerCase();
-
-      if (error.type == DioExceptionType.connectionTimeout ||
-          error.type == DioExceptionType.sendTimeout ||
-          error.type == DioExceptionType.receiveTimeout) {
-        return 'Request timeout. Please try again.';
-      }
-
-      if (error.type == DioExceptionType.connectionError) {
-        return 'Unable to connect. Check internet or server.';
-      }
 
       if (flow == AuthFlow.login && statusCode == 401) {
         if (lower.contains('setup pending') ||
@@ -129,13 +128,10 @@ class AuthService {
       if (serverError.isNotEmpty) return serverError;
       return 'Oops! Something went wrong';
     }
-
-    final raw = error.toString().toLowerCase();
-    if (raw.contains('socketexception') || raw.contains('connection')) {
-      return 'Unable to connect. Check internet or server.';
-    }
-    if (raw.contains('timeout')) return 'Request timeout. Please try again.';
-    return 'Oops! Something went wrong';
+    return NetworkErrorHandler.message(
+      error,
+      fallback: 'Oops! Something went wrong',
+    );
   }
 
   Future<Map<String, dynamic>> sendSignupOtp(String phoneNumber) async {
@@ -156,12 +152,14 @@ class AuthService {
 
   Future<Map<String, dynamic>> sendResetPinOtp(String phoneNumber) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    developer.log('AuthService: sendResetPinOtp request ($normalizedPhone)', name: 'AuthService');
+    developer.log('AuthService: sendResetPinOtp request ($normalizedPhone)',
+        name: 'AuthService');
     final response = await _api.post(
       ApiConfig.sendResetPinOtp,
       data: {'phoneNumber': normalizedPhone},
     );
-    developer.log('AuthService: sendResetPinOtp response: ${response.data}', name: 'AuthService');
+    developer.log('AuthService: sendResetPinOtp response: ${response.data}',
+        name: 'AuthService');
     return response.data;
   }
 
@@ -172,7 +170,9 @@ class AuthService {
     required String pin,
   }) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    developer.log('AuthService: verifySignupOtp request (phone: $normalizedPhone, name: $name)', name: 'AuthService');
+    developer.log(
+        'AuthService: verifySignupOtp request (phone: $normalizedPhone, name: $name)',
+        name: 'AuthService');
     final response = await _api.post(
       ApiConfig.verifyOtp,
       data: {
@@ -195,7 +195,9 @@ class AuthService {
     await _storage.write(key: 'user_id', value: user.userId);
     await _storage.write(key: 'hashed_pin', value: user.hashedPin);
 
-    developer.log('AuthService: verifySignupOtp success (userId: ${user.userId})', name: 'AuthService');
+    developer.log(
+        'AuthService: verifySignupOtp success (userId: ${user.userId})',
+        name: 'AuthService');
     return user;
   }
 
@@ -239,7 +241,8 @@ class AuthService {
     required String pin,
   }) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    developer.log('AuthService: verifyResetPinOtp request ($normalizedPhone)', name: 'AuthService');
+    developer.log('AuthService: verifyResetPinOtp request ($normalizedPhone)',
+        name: 'AuthService');
     await _api.post(
       ApiConfig.verifyResetPinOtp,
       data: {
@@ -248,7 +251,8 @@ class AuthService {
         'pin': pin,
       },
     );
-    developer.log('AuthService: verifyResetPinOtp success', name: 'AuthService');
+    developer.log('AuthService: verifyResetPinOtp success',
+        name: 'AuthService');
     await _storage.write(key: 'hashed_pin', value: _hashPin(pin));
   }
 
@@ -268,15 +272,11 @@ class AuthService {
   }
 
   Future<UserModel?> updateMe({String? name}) async {
-    try {
-      final payload = <String, dynamic>{};
-      if (name != null) payload['name'] = name;
+    final payload = <String, dynamic>{};
+    if (name != null) payload['name'] = name;
 
-      final response = await _api.patch(ApiConfig.usersMe, data: payload);
-      return UserModel.fromJson(response.data['data']);
-    } catch (_) {
-      return null;
-    }
+    final response = await _api.patch(ApiConfig.usersMe, data: payload);
+    return UserModel.fromJson(response.data['data']);
   }
 
   Future<String?> getCurrentUserId() async {
@@ -301,7 +301,6 @@ class AuthService {
         contactService.notifyUpdate();
       }
     }
-    await expenseService.getExpenses(forceRefresh: true);
   }
 
   Future<bool> isLoggedIn() async {
@@ -309,4 +308,3 @@ class AuthService {
     return token != null;
   }
 }
-

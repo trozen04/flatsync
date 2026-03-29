@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../constants/app_dimensions.dart';
 import '../../widgets/custom_button.dart';
+import '../../widgets/gradient_app_bar.dart';
 import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/custom_snackbar.dart';
@@ -207,7 +208,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        appBar: AppBar(title: const Text('Forgot PIN')),
+        appBar: const GradientAppBar(title: 'Forgot PIN'),
         body: SafeArea(
           child: Padding(
             padding: AppDimensions.appMargin(context),

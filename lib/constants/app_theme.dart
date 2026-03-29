@@ -23,12 +23,11 @@ class AppTheme {
       ),
       textTheme: GoogleFonts.interTextTheme(),
       appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.primary,
+        backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
-        elevation: 3,
-        scrolledUnderElevation: 6,
-        shadowColor: Colors.black54,
-        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shadowColor: Colors.transparent,
         centerTitle: false,
         titleTextStyle: TextStyle(
           color: Colors.white,

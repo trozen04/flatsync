@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_dimensions.dart';
+import '../constants/app_shadows.dart';
 import '../constants/app_spacing.dart';
 
-enum AppCardType { elevated, outlined, filled }
+enum AppCardType { elevated, outlined, filled, glass }
 
 class AppCard extends StatelessWidget {
   final Widget child;
@@ -10,9 +12,10 @@ class AppCard extends StatelessWidget {
   final VoidCallback? onTap;
   final EdgeInsets? padding;
   final EdgeInsets? margin;
-  final double? elevation;
   final Color? backgroundColor;
   final BorderRadius? borderRadius;
+  // Optional accent shadow color (e.g. pass AppColors.success for green-tinted shadow)
+  final Color? shadowColor;
 
   const AppCard({
     super.key,
@@ -21,22 +24,19 @@ class AppCard extends StatelessWidget {
     this.onTap,
     this.padding,
     this.margin,
-    this.elevation,
     this.backgroundColor,
     this.borderRadius,
+    this.shadowColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final effectivePadding = padding ?? AppSpacing.cardPadding(context);
-    final effectiveMargin = margin ?? EdgeInsets.only(
-      bottom: AppSpacing.responsive(context, AppSpacing.sm),
-    );
-    final effectiveBorderRadius = borderRadius ?? BorderRadius.circular(
-      AppSpacing.responsive(context, 12),
-    );
+    final effectivePadding = padding ?? AppDimensions.compactCardPadding(context);
+    final effectiveMargin = margin ?? AppDimensions.compactCardMargin(context);
+    final effectiveBorderRadius = borderRadius ??
+        BorderRadius.circular(AppSpacing.responsive(context, 14));
 
-    Widget card = Container(
+    return Container(
       margin: effectiveMargin,
       decoration: _getDecoration(context, effectiveBorderRadius),
       child: Material(
@@ -44,6 +44,8 @@ class AppCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: effectiveBorderRadius,
+          splashColor: AppColors.primary.withValues(alpha: 0.06),
+          highlightColor: AppColors.primary.withValues(alpha: 0.03),
           child: Padding(
             padding: effectivePadding,
             child: child,
@@ -51,59 +53,45 @@ class AppCard extends StatelessWidget {
         ),
       ),
     );
-
-    if (type == AppCardType.elevated && elevation != null) {
-      card = Card(
-        margin: effectiveMargin,
-        elevation: elevation!,
-        shape: RoundedRectangleBorder(borderRadius: effectiveBorderRadius),
-        color: backgroundColor ?? AppColors.surface,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: effectiveBorderRadius,
-          child: Padding(
-            padding: effectivePadding,
-            child: child,
-          ),
-        ),
-      );
-    }
-
-    return card;
   }
 
   BoxDecoration _getDecoration(BuildContext context, BorderRadius borderRadius) {
+    final surface = Theme.of(context).colorScheme.surface;
     switch (type) {
       case AppCardType.elevated:
         return BoxDecoration(
-          color: backgroundColor ?? AppColors.surface,
+          color: backgroundColor ?? surface,
           borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: AppSpacing.responsive(context, 8),
-              offset: Offset(0, AppSpacing.responsive(context, 2)),
-            ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: AppSpacing.responsive(context, 4),
-              offset: Offset(0, AppSpacing.responsive(context, 1)),
-            ),
-          ],
+          border: Border.all(color: AppColors.borderLight, width: 1.0),
+          boxShadow: shadowColor != null
+              ? AppShadows.colored(shadowColor!)
+              : AppShadows.card,
         );
       case AppCardType.outlined:
         return BoxDecoration(
-          color: backgroundColor ?? AppColors.surface,
+          color: backgroundColor ?? surface,
           borderRadius: borderRadius,
-          border: Border.all(
-            color: AppColors.border,
-            width: 1,
-          ),
+          border: Border.all(color: AppColors.borderLight, width: 1.2),
+          boxShadow: shadowColor != null
+              ? AppShadows.colored(shadowColor!, intensity: 0.10)
+              : AppShadows.subtle,
         );
       case AppCardType.filled:
         return BoxDecoration(
-          color: backgroundColor ?? AppColors.surfaceVariant,
+          color: backgroundColor ?? Theme.of(context).colorScheme.surfaceVariant,
           borderRadius: borderRadius,
+          border: Border.all(color: AppColors.borderLight, width: 1.0),
+          boxShadow: AppShadows.subtle,
+        );
+      case AppCardType.glass:
+        return BoxDecoration(
+          color: (backgroundColor ?? surface).withValues(alpha: 0.85),
+          borderRadius: borderRadius,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.60),
+            width: 1.2,
+          ),
+          boxShadow: AppShadows.card,
         );
     }
   }
@@ -131,7 +119,13 @@ class AppListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectivePadding = padding ?? AppSpacing.listItemPadding(context);
+    final effectivePadding = padding ??
+        (dense
+            ? AppSpacing.listItemPadding(context).copyWith(
+                top: AppSpacing.responsive(context, AppSpacing.xs),
+                bottom: AppSpacing.responsive(context, AppSpacing.xs),
+              )
+            : AppSpacing.listItemPadding(context));
 
     return InkWell(
       onTap: onTap,
@@ -141,7 +135,7 @@ class AppListTile extends StatelessWidget {
           children: [
             if (leading != null) ...[
               leading!,
-              AppSpacing.horizontalSpace(context, AppSpacing.md),
+              AppSpacing.horizontalSpace(context, AppSpacing.sm),
             ],
             Expanded(
               child: Column(
@@ -157,7 +151,7 @@ class AppListTile extends StatelessWidget {
               ),
             ),
             if (trailing != null) ...[
-              AppSpacing.horizontalSpace(context, AppSpacing.md),
+              AppSpacing.horizontalSpace(context, AppSpacing.sm),
               trailing!,
             ],
           ],

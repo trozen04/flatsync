@@ -50,14 +50,12 @@ class AppTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (label != null) ...[
-          Text(
-            label!,
-            style: AppTextStyles.labelMedium(context),
-          ),
+          Text(label!, style: AppTextStyles.labelMedium(context)),
           AppSpacing.verticalSpace(context, AppSpacing.sm),
         ],
         TextFormField(
@@ -83,44 +81,30 @@ class AppTextField extends StatelessWidget {
             suffixIcon: suffixIcon,
             contentPadding: AppSpacing.inputPadding(context),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppSpacing.responsive(context, 8),
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 8)),
               borderSide: const BorderSide(color: AppColors.border),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppSpacing.responsive(context, 8),
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 8)),
               borderSide: const BorderSide(color: AppColors.border),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppSpacing.responsive(context, 8),
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 8)),
               borderSide: const BorderSide(color: AppColors.primary, width: 2),
             ),
             errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppSpacing.responsive(context, 8),
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 8)),
               borderSide: const BorderSide(color: AppColors.error),
             ),
             focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppSpacing.responsive(context, 8),
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 8)),
               borderSide: const BorderSide(color: AppColors.error, width: 2),
             ),
             filled: true,
-            fillColor: enabled ? AppColors.surface : AppColors.surfaceVariant,
-            hintStyle: AppTextStyles.bodyMedium(context).copyWith(
-              color: AppColors.textTertiary,
-            ),
+            fillColor: enabled ? scheme.surface : scheme.surfaceVariant,
+            hintStyle: AppTextStyles.bodyMedium(context).copyWith(color: AppColors.textTertiary),
             helperStyle: AppTextStyles.bodySmall(context),
-            errorStyle: AppTextStyles.bodySmall(context).copyWith(
-              color: AppColors.error,
-            ),
+            errorStyle: AppTextStyles.bodySmall(context).copyWith(color: AppColors.error),
           ),
         ),
       ],
@@ -150,14 +134,12 @@ class AppDropdownField<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (label != null) ...[
-          Text(
-            label!,
-            style: AppTextStyles.labelMedium(context),
-          ),
+          Text(label!, style: AppTextStyles.labelMedium(context)),
           AppSpacing.verticalSpace(context, AppSpacing.sm),
         ],
         DropdownButtonFormField<T>(
@@ -170,28 +152,20 @@ class AppDropdownField<T> extends StatelessWidget {
             hintText: hint,
             contentPadding: AppSpacing.inputPadding(context),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppSpacing.responsive(context, 8),
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 8)),
               borderSide: const BorderSide(color: AppColors.border),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppSpacing.responsive(context, 8),
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 8)),
               borderSide: const BorderSide(color: AppColors.border),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(
-                AppSpacing.responsive(context, 8),
-              ),
+              borderRadius: BorderRadius.circular(AppSpacing.responsive(context, 8)),
               borderSide: const BorderSide(color: AppColors.primary, width: 2),
             ),
             filled: true,
-            fillColor: enabled ? AppColors.surface : AppColors.surfaceVariant,
-            hintStyle: AppTextStyles.bodyMedium(context).copyWith(
-              color: AppColors.textTertiary,
-            ),
+            fillColor: enabled ? scheme.surface : scheme.surfaceVariant,
+            hintStyle: AppTextStyles.bodyMedium(context).copyWith(color: AppColors.textTertiary),
           ),
         ),
       ],

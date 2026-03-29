@@ -7,13 +7,14 @@ import 'package:provider/provider.dart';
 import '../../constants/app_dimensions.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_text_styles.dart';
+import '../../widgets/app_card.dart';
 import '../../widgets/detail_dialog.dart';
 import '../../widgets/loading_indicator.dart';
+import '../../widgets/banner_ad_widget.dart';
 import '../../bloc/contact_provider.dart';
 import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/expense_service.dart';
-import '../../constants/app_shadows.dart';
 import '../../utils/date_utils.dart';
 import '../../utils/export_utils.dart';
 import '../../utils/money_utils.dart';
@@ -39,19 +40,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String? _currentUserId;
   String _typeFilter = 'all';
   String _searchQuery = '';
+  Timer? _searchDebounce;
 
   StreamSubscription<int>? _updatesSub;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
 
   void _applyFilter() {
-    final q = _searchQuery.toLowerCase();
     setState(() {
       _filtered = _allTransactions.where((item) {
         final type = (item['type'] as String?) ?? '';
-        final description = ((item['description'] as String?) ?? '').toLowerCase();
         if (_typeFilter != 'all' && type != _typeFilter) return false;
-        if (q.isNotEmpty && !description.contains(q)) return false;
         return true;
       }).toList();
     });
@@ -75,8 +74,35 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (mounted) setState(() => _currentUserId = userId);
   }
 
+  String _stringValue(dynamic value) => value?.toString().trim() ?? '';
+
+  String _displayLabelForUser(
+    ContactProvider contactProvider, {
+    Map<String, dynamic>? summary,
+    String? fallback,
+  }) {
+    final summaryName = _stringValue(summary?['name']);
+    if (summaryName.isNotEmpty) return summaryName;
+
+    final summaryPhone = _stringValue(summary?['phoneNumber']);
+    if (summaryPhone.isNotEmpty) return summaryPhone;
+
+    final contact = contactProvider.getContactById(fallback) ??
+        contactProvider.getContactByPhone(fallback);
+    if (contact != null) {
+      final name = _stringValue(contact.name);
+      if (name.isNotEmpty) return name;
+      final phone = _stringValue(contact.phoneNumber);
+      if (phone.isNotEmpty) return phone;
+    }
+
+    final fallbackText = _stringValue(fallback);
+    return fallbackText.isNotEmpty ? fallbackText : 'Unknown';
+  }
+
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
     _updatesSub?.cancel();
@@ -84,7 +110,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       if (!_loadingMore && _hasMore) _loadMore();
     }
   }
@@ -112,13 +139,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (_loadingMore) return;
     setState(() => _loadingMore = true);
     try {
+      final requestSearch = _searchQuery.trim();
       final pageRows = await context.read<ExpenseService>().getTimeline(
             limit: _pageSize,
             forceRefresh: true,
             cursor: _nextCursor,
+            search: requestSearch,
           );
       final normalized = _normalizeTimeline(pageRows.items);
       if (!mounted) return;
+      if (requestSearch != _searchQuery.trim()) return;
       setState(() {
         _allTransactions.addAll(normalized);
         _nextCursor = pageRows.nextCursor;
@@ -135,12 +165,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (!mounted) return;
     setState(() => _refreshing = true);
     try {
+      final requestSearch = _searchQuery.trim();
       final pageRows = await context.read<ExpenseService>().getTimeline(
             limit: _pageSize,
             forceRefresh: forceRefresh,
+            search: requestSearch,
           );
       final normalized = _normalizeTimeline(pageRows.items);
       if (!mounted) return;
+      if (requestSearch != _searchQuery.trim()) return;
       setState(() {
         _allTransactions = normalized;
         _nextCursor = pageRows.nextCursor;
@@ -159,7 +192,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       builder: (context, contactProvider, _) {
         final preferredCurrencyCode =
             context.watch<AppPreferencesService>().preferredCurrencyCode;
+        final pageMargin = AppDimensions.appMargin(context);
+
         if (_allTransactions.isEmpty && !_refreshing) {
+          final hasSearch = _searchQuery.trim().isNotEmpty;
           return Column(
             children: [
               LoadingIndicator(isLoading: _refreshing),
@@ -170,18 +206,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     children: [
                       Icon(Icons.history, size: 64, color: Colors.grey.shade400),
                       AppDimensions.h20(context),
-                      Text('No history yet', style: AppTextStyles.headlineSmall(context)),
+                      Text(
+                        hasSearch ? 'No results' : 'No history yet',
+                        style: AppTextStyles.headlineSmall(context),
+                      ),
                       AppDimensions.h10(context),
                       Text(
-                        'Your transaction history will appear here',
+                        hasSearch
+                            ? 'Try a different search term'
+                            : 'Your transaction history will appear here',
                         style: AppTextStyles.bodyMedium(context),
                       ),
                       AppDimensions.h20(context),
-                      FilledButton.icon(
-                        onPressed: widget.onNavigateToAddExpense,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Expense'),
-                      ),
+                      if (!hasSearch)
+                        FilledButton.icon(
+                          onPressed: widget.onNavigateToAddExpense,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Expense'),
+                        ),
                     ],
                   ),
                 ),
@@ -193,9 +235,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return Column(
           children: [
             LoadingIndicator(isLoading: _refreshing),
-            // AppBar row with export
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 4, 0),
+            // Search bar
+            AppCard(
+              type: AppCardType.outlined,
+              padding: AppDimensions.fieldPadding(context),
               child: Row(
                 children: [
                   Expanded(
@@ -210,16 +253,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 onPressed: () {
                                   _searchController.clear();
                                   _searchQuery = '';
-                                  _applyFilter();
+                                  _loadHistory(forceRefresh: true);
                                 },
                               )
                             : null,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        contentPadding: AppDimensions.fieldPadding(context),
                       ),
                       onChanged: (v) {
-                        _searchQuery = v;
-                        _applyFilter();
+                        _searchDebounce?.cancel();
+                        setState(() => _searchQuery = v);
+                        _searchDebounce =
+                            Timer(const Duration(milliseconds: 250), () {
+                          if (mounted) _loadHistory(forceRefresh: true);
+                        });
                       },
                     ),
                   ),
@@ -237,14 +283,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ? null
                           : () async {
                               setState(() => _exporting = true);
+                              final messenger = ScaffoldMessenger.of(context);
                               try {
                                 await ExportUtils.exportAndShare(_filtered);
                               } catch (_) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Export failed')),
-                                  );
-                                }
+                                messenger.showSnackBar(
+                                  const SnackBar(content: Text('Export failed')),
+                                );
                               } finally {
                                 if (mounted) setState(() => _exporting = false);
                               }
@@ -253,52 +298,61 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ],
               ),
             ),
+            AppDimensions.h10(context),
             // Filter chips
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Row(
+            AppCard(
+              type: AppCardType.outlined,
+              padding: AppDimensions.fieldPadding(context),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (final f in [
                     ('all', 'All'),
                     ('expense', 'Expenses'),
                     ('transaction', 'Transactions'),
                   ])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(f.$2),
-                        selected: _typeFilter == f.$1,
-                        onSelected: (_) {
-                          _typeFilter = f.$1;
-                          _applyFilter();
-                        },
-                      ),
+                    FilterChip(
+                      label: Text(f.$2),
+                      selected: _typeFilter == f.$1,
+                      onSelected: (_) {
+                        setState(() => _typeFilter = f.$1);
+                        _applyFilter();
+                      },
                     ),
                 ],
               ),
             ),
+            // Transaction list
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () => _loadHistory(forceRefresh: true),
                 child: _filtered.isEmpty
                     ? ListView(
                         children: [
-                          const SizedBox(height: 80),
+                          AppDimensions.h100(context),
                           Center(
-                            child: Text('No results', style: AppTextStyles.bodyMedium(context)),
+                            child: Text('No results',
+                                style: AppTextStyles.bodyMedium(context)),
                           ),
                         ],
                       )
                     : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                        padding: EdgeInsets.fromLTRB(
+                          pageMargin.left,
+                          pageMargin.top,
+                          pageMargin.right,
+                          pageMargin.bottom +
+                              AppDimensions.compactCardMargin(context).bottom,
+                        ),
                         itemCount: _filtered.length + (_loadingMore ? 1 : 0),
                         itemBuilder: (context, index) {
                           if (index == _filtered.length) {
-                            return const Center(
+                            return Center(
                               child: Padding(
-                                padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(),
+                                padding: AppDimensions.fieldPadding(context),
+                                child: const CircularProgressIndicator(),
                               ),
                             );
                           }
@@ -311,13 +365,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           final description = (item['description'] as String?) ?? '';
                           final paidBy = item['paidBy'] as String?;
                           final counterpartyRaw = item['counterparty'];
-                          final counterparty = counterpartyRaw is String
-                              ? counterpartyRaw
-                              : (counterpartyRaw is Map ? counterpartyRaw['_id']?.toString() : null);
+                          final counterpartySummary = counterpartyRaw is Map
+                              ? counterpartyRaw.map((k, v) => MapEntry(k.toString(), v))
+                              : null;
+                          final counterparty = counterpartySummary?['_id']?.toString();
                           final direction = item['direction'] as String?;
                           final date = item['createdAt'] as DateTime;
 
-                          developer.log('📊 HISTORY ITEM: type=$type, amount=$amountPaise, description=$description');
+                          developer.log(
+                              '📊 HISTORY ITEM: type=$type, amount=$amountPaise, description=$description');
 
                           final formattedDate = AppDateUtils.formatDate(date);
                           final formattedTime = AppDateUtils.formatTime(date);
@@ -327,196 +383,216 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
                           if (type == 'transaction') {
                             final isReceivedByMe = direction == 'received';
-                            displayName = contactProvider.getDisplayName(counterparty);
+                            displayName = _displayLabelForUser(
+                              contactProvider,
+                              summary: counterpartySummary,
+                              fallback: counterparty,
+                            );
                             subtitle = isReceivedByMe
                                 ? 'Received from $displayName'
                                 : 'Sent to $displayName';
                           } else {
                             final isCreatedByMe = paidBy == _currentUserId;
+                            final payerName = _displayLabelForUser(
+                              contactProvider,
+                              summary: counterpartySummary,
+                              fallback: paidBy,
+                            );
                             subtitle = isCreatedByMe
                                 ? 'You paid for expense'
-                                : '${contactProvider.getDisplayName(paidBy)} paid for expense';
+                                : '$payerName paid for expense';
                           }
 
                           final amountColor = type == 'expense'
                               ? AppColors.primary
-                              : (direction == 'received' ? AppColors.success : AppColors.error);
+                              : (direction == 'received'
+                                  ? AppColors.success
+                                  : AppColors.error);
 
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.border),
-                              boxShadow: AppShadows.card,
+                          return AppCard(
+                            type: AppCardType.elevated,
+                            margin: EdgeInsets.only(
+                              bottom: AppDimensions.compactCardMargin(context).bottom,
                             ),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () {
-                                final items = <DetailItem>[];
-                                if (type == 'expense') {
-                                  items.add(DetailItem(label: 'Description', value: description, icon: Icons.description));
-                                  if (totalAmountPaise != null) {
-                                    items.add(DetailItem(
-                                      label: 'Total Amount',
-                                      value: formatMinorUnits(
-                                        totalAmountPaise,
-                                        currencyCode: preferredCurrencyCode,
-                                      ),
-                                      icon: Icons.account_balance_wallet,
-                                      valueColor: AppColors.primary,
-                                    ));
-                                  }
+                            padding: AppDimensions.compactCardPadding(context),
+                            onTap: () {
+                              final items = <DetailItem>[];
+                              if (type == 'expense') {
+                                items.add(DetailItem(
+                                    label: 'Description',
+                                    value: description,
+                                    icon: Icons.description));
+                                if (totalAmountPaise != null) {
                                   items.add(DetailItem(
-                                    label: 'Your Share',
-                                    value: formatMinorUnits(
-                                      amountPaise,
-                                      currencyCode: preferredCurrencyCode,
-                                    ),
-                                    icon: Icons.person,
+                                    label: 'Total Amount',
+                                    value: formatMinorUnits(totalAmountPaise,
+                                        currencyCode: preferredCurrencyCode),
+                                    icon: Icons.account_balance_wallet,
                                     valueColor: AppColors.primary,
-                                  ));
-                                  if (participants > 0) {
-                                    items.add(DetailItem(
-                                      label: 'Split Between',
-                                      value: '${participants + 1} people',
-                                      icon: Icons.group,
-                                    ));
-                                  }
-                                  items.add(DetailItem(label: subtitle, value: '', icon: Icons.info_outline));
-                                } else {
-                                  items.add(DetailItem(label: 'Description', value: description, icon: Icons.description));
-                                  items.add(DetailItem(
-                                    label: 'Amount',
-                                    value: formatMinorUnits(
-                                      amountPaise,
-                                      currencyCode: preferredCurrencyCode,
-                                    ),
-                                    icon: Icons.payments,
-                                    valueColor: amountColor,
-                                  ));
-                                  items.add(DetailItem(
-                                    label: 'Type',
-                                    value: subtitle,
-                                    icon: direction == 'received' ? Icons.call_received : Icons.call_made,
                                   ));
                                 }
                                 items.add(DetailItem(
-                                  label: 'Date & Time',
-                                  value: '$formattedDate at $formattedTime',
-                                  icon: Icons.calendar_today,
+                                  label: 'Your Share',
+                                  value: formatMinorUnits(amountPaise,
+                                      currencyCode: preferredCurrencyCode),
+                                  icon: Icons.person,
+                                  valueColor: AppColors.primary,
                                 ));
-                                showDialog(
-                                  context: context,
-                                  builder: (context) => DetailDialog(
-                                    title: type == 'expense' ? 'Expense Details' : 'Transaction Details',
-                                    items: items,
-                                    accentColor: amountColor,
-                                  ),
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.all(14),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 44,
-                                      height: 44,
-                                      decoration: BoxDecoration(
-                                        color: type == 'expense'
-                                            ? AppColors.primary.withValues(alpha: 0.12)
-                                            : (direction == 'received'
-                                                ? AppColors.success.withValues(alpha: 0.12)
-                                                : AppColors.error.withValues(alpha: 0.12)),
-                                        shape: BoxShape.circle,
-                                        boxShadow: AppShadows.subtle,
-                                      ),
-                                      child: Icon(
-                                        type == 'expense'
-                                            ? Icons.receipt_long
-                                            : (direction == 'received' ? Icons.call_received : Icons.call_made),
-                                        color: type == 'expense'
-                                            ? AppColors.primary
-                                            : (direction == 'received' ? AppColors.success : AppColors.error),
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            description,
-                                            style: AppTextStyles.titleMedium(context).copyWith(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            subtitle,
-                                            style: AppTextStyles.bodySmall(context).copyWith(fontSize: 13),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            '$formattedDate at $formattedTime',
-                                            style: AppTextStyles.caption(context).copyWith(fontSize: 11),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          formatMinorUnits(
-                                            amountPaise,
-                                            currencyCode: preferredCurrencyCode,
-                                          ),
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: amountColor,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(
-                                            color: amountColor.withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color: amountColor.withValues(alpha: 0.3),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            type == 'expense'
-                                                ? 'Your share'
-                                                : (direction == 'received' ? 'Received' : 'Sent'),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                              color: amountColor,
-                                              letterSpacing: 0.3,
-                                            ),
-                                          ),
-                                        ),
+                                if (participants > 0) {
+                                  items.add(DetailItem(
+                                    label: 'Split Between',
+                                    value: '${participants + 1} people',
+                                    icon: Icons.group,
+                                  ));
+                                }
+                                items.add(DetailItem(
+                                    label: subtitle,
+                                    value: '',
+                                    icon: Icons.info_outline));
+                              } else {
+                                items.add(DetailItem(
+                                    label: 'Description',
+                                    value: description,
+                                    icon: Icons.description));
+                                items.add(DetailItem(
+                                  label: 'Amount',
+                                  value: formatMinorUnits(amountPaise,
+                                      currencyCode: preferredCurrencyCode),
+                                  icon: Icons.payments,
+                                  valueColor: amountColor,
+                                ));
+                                items.add(DetailItem(
+                                  label: 'Type',
+                                  value: subtitle,
+                                  icon: direction == 'received'
+                                      ? Icons.call_received
+                                      : Icons.call_made,
+                                ));
+                              }
+                              items.add(DetailItem(
+                                label: 'Date & Time',
+                                value: '$formattedDate at $formattedTime',
+                                icon: Icons.calendar_today,
+                              ));
+                              showDialog(
+                                context: context,
+                                builder: (context) => DetailDialog(
+                                  title: type == 'expense'
+                                      ? 'Expense Details'
+                                      : 'Transaction Details',
+                                  items: items,
+                                  accentColor: amountColor,
+                                ),
+                              );
+                            },
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 46,
+                                  height: 46,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        amountColor.withValues(alpha: 0.18),
+                                        amountColor.withValues(alpha: 0.07),
                                       ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: amountColor.withValues(alpha: 0.22),
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    type == 'expense'
+                                        ? Icons.receipt_long_rounded
+                                        : (direction == 'received'
+                                            ? Icons.call_received_rounded
+                                            : Icons.call_made_rounded),
+                                    color: amountColor,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        description,
+                                        style: AppTextStyles.titleSmall(context)
+                                            .copyWith(fontWeight: FontWeight.w700),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        subtitle,
+                                        style: AppTextStyles.bodySmall(context),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        '$formattedDate · $formattedTime',
+                                        style: AppTextStyles.caption(context),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        formatMinorUnits(amountPaise,
+                                            currencyCode: preferredCurrencyCode),
+                                        style: AppTextStyles.labelLarge(context)
+                                            .copyWith(
+                                          color: amountColor,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: amountColor.withValues(alpha: 0.10),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: amountColor.withValues(alpha: 0.25),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        type == 'expense'
+                                            ? 'Your share'
+                                            : (direction == 'received'
+                                                ? 'Received'
+                                                : 'Sent'),
+                                        style: AppTextStyles.labelSmall(context)
+                                            .copyWith(
+                                          color: amountColor,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
+                              ],
                             ),
                           );
                         },
                       ),
               ),
             ),
+            // Banner Ad — list ke neeche, navbar ke upar
+            const BannerAdWidget(),
           ],
         );
       },

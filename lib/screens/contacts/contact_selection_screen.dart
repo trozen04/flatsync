@@ -4,12 +4,16 @@ import 'package:isar/isar.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:developer' as developer;
+import '../../constants/app_colors.dart';
+import '../../constants/app_dimensions.dart';
+import '../../constants/app_text_styles.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/network_error_handler.dart';
 import '../../services/contact_service.dart';
 import '../../models/contact_model.dart';
 import '../../services/isar_service.dart';
 import '../../utils/phone_utils.dart';
-import '../../widgets/shadowed_app_bar.dart';
+import '../../widgets/gradient_app_bar.dart';
 
 class ContactSelectionScreen extends StatefulWidget {
   const ContactSelectionScreen({super.key});
@@ -55,24 +59,17 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
 
   Future<void> _loadDeviceContacts() async {
     try {
-      developer.log('🔍 Checking contact permission...');
-      
       final status = await Permission.contacts.status;
-      developer.log('📱 Current permission status: $status');
-      
       if (status.isDenied) {
-        developer.log('⚠️ Permission denied, requesting...');
         final result = await Permission.contacts.request();
-        developer.log('📱 Request result: $result');
-        
         if (!result.isGranted) {
-          developer.log('❌ Permission not granted, showing dialog');
           if (mounted) {
             final retry = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
                 title: const Text('Contact Permission Required'),
-                content: const Text('This app needs access to your contacts to find registered users. Please grant permission in settings.'),
+                content: const Text(
+                    'This app needs access to your contacts to find registered users. Please grant permission in settings.'),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context, false),
@@ -85,26 +82,19 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                 ],
               ),
             );
-            
-            if (retry == true) {
-              developer.log('🔧 Opening app settings');
-              await openAppSettings();
-            }
+            if (retry == true) await openAppSettings();
             Navigator.pop(context);
           }
           return;
         }
       }
 
-      developer.log('✅ Permission granted, loading contacts...');
       final contacts = await FlutterContacts.getContacts(
         withProperties: true,
         withPhoto: false,
       );
-      
-      developer.log('📇 Loaded ${contacts.length} contacts');
-      final contactsWithPhone = contacts.where((c) => c.phones.isNotEmpty).toList();
-      developer.log('📞 Contacts with phone: ${contactsWithPhone.length}');
+      final contactsWithPhone =
+          contacts.where((c) => c.phones.isNotEmpty).toList();
 
       if (mounted) {
         final preselected = await _loadPreviouslyAddedPhones(contactsWithPhone);
@@ -115,11 +105,14 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
           _loading = false;
         });
       }
-    } catch (e, stackTrace) {
-      developer.log('❌ Load device contacts error: $e');
-      developer.log('Stack trace: $stackTrace');
+    } catch (e) {
+      developer.log('Load device contacts error: $e');
       if (mounted) {
-        CustomSnackBar.show(context, message: 'Failed to load contacts', isError: true);
+        CustomSnackBar.show(
+          context,
+          message: NetworkErrorHandler.message(e, fallback: 'Failed to load contacts'),
+          isError: true,
+        );
         setState(() => _loading = false);
       }
     }
@@ -128,14 +121,13 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
   Future<Set<String>> _loadPreviouslyAddedPhones(List<Contact> deviceContacts) async {
     try {
       final isar = context.read<IsarService>();
-      final savedContacts = await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
+      final savedContacts =
+          await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
       if (savedContacts.isEmpty) return <String>{};
-
       final savedCanonicalPhones = savedContacts
           .map((c) => _canonicalPhone(c.phoneNumber ?? ''))
           .where((p) => p.isNotEmpty)
           .toSet();
-
       return deviceContacts
           .map((c) => _normalizePhone(c.phones.first.number))
           .where((phone) => savedCanonicalPhones.contains(_canonicalPhone(phone)))
@@ -154,30 +146,19 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
       CustomSnackBar.show(context, message: 'Select at least one contact', isError: true);
       return;
     }
-
     setState(() => _syncing = true);
-
     try {
       final selectedContacts = _deviceContacts
           .where((c) => _selectedPhones.contains(_normalizePhone(c.phones.first.number)))
           .toList();
 
-      // Try to match with backend
-      final contactsData = selectedContacts.map((c) => {
-        'name': c.displayName,
-        'phone': _normalizePhone(c.phones.first.number),
-      }).toList();
+      final contactsData = selectedContacts
+          .map((c) => {'name': c.displayName, 'phone': _normalizePhone(c.phones.first.number)})
+          .toList();
 
       final contactService = context.read<ContactService>();
       final registeredUsers = await contactService.matchContactsList(contactsData);
 
-      developer.log('🔍 Sent ${contactsData.length} contacts to backend');
-      developer.log('✅ Backend returned ${registeredUsers.length} registered users');
-      for (var user in registeredUsers) {
-        developer.log('  - ${user.name} (${user.phoneNumber})');
-      }
-
-      // Create map of registered users by canonical phone for robust matching.
       final registeredPhones = <String, ContactModel>{};
       for (final user in registeredUsers) {
         final phone = user.phoneNumber;
@@ -185,21 +166,15 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
         registeredPhones[_canonicalPhone(phone)] = user;
       }
 
-      // Save ALL contacts (registered + unregistered)
       final isar = context.read<IsarService>();
       final allContacts = <ContactModel>[];
-
       for (var contact in selectedContacts) {
         final phone = _normalizePhone(contact.phones.first.number);
         final registered = registeredPhones[_canonicalPhone(phone)];
-
         if (registered != null) {
-          if (_looksLikePhoneName(registered.name)) {
-            registered.name = contact.displayName;
-          }
+          if (_looksLikePhoneName(registered.name)) registered.name = contact.displayName;
           allContacts.add(registered);
         } else {
-          // Add as unregistered contact (no contactId since not registered)
           allContacts.add(ContactModel(
             name: contact.displayName,
             phoneNumber: phone,
@@ -210,12 +185,6 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
       }
 
       await contactService.upsertContactsByCanonical(isar, allContacts);
-
-      developer.log('✅ Saved ${allContacts.length} contacts');
-      developer.log('📊 Registered: ${allContacts.where((c) => c.isRegistered).length}');
-      developer.log('📊 Unregistered: ${allContacts.where((c) => !c.isRegistered).length}');
-
-      // Notify all screens about contact updates
       contactService.notifyUpdate();
 
       if (mounted) {
@@ -225,7 +194,11 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
     } catch (e) {
       developer.log('Sync selected error: $e');
       if (mounted) {
-        CustomSnackBar.show(context, message: 'Failed to sync contacts', isError: true);
+        CustomSnackBar.show(
+          context,
+          message: NetworkErrorHandler.message(e, fallback: 'Failed to sync contacts'),
+          isError: true,
+        );
       }
     } finally {
       if (mounted) setState(() => _syncing = false);
@@ -234,49 +207,59 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final selectedCount = _selectedPhones.length;
+
     return Scaffold(
-      appBar: ShadowedAppBar(
-        child: AppBar(
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          title: const Text('Select Contacts'),
-          actions: [
-            if (_selectedPhones.isNotEmpty)
-              TextButton(
+      appBar: GradientAppBar(
+        title: 'Select Contacts',
+        actions: [
+          if (selectedCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton(
                 onPressed: _syncing ? null : _syncSelected,
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.15),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                ),
                 child: _syncing
                     ? const SizedBox(
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : Text(
-                        'Add (${_selectedPhones.length})',
-                        style: const TextStyle(color: Colors.white),
+                        'Add $selectedCount',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _deviceContacts.isEmpty
-              ? const Center(child: Text('No contacts found'))
+              ? Center(
+                  child: Text('No contacts found',
+                      style: AppTextStyles.bodyMedium(context)),
+                )
               : Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: AppDimensions.appMargin(context).copyWith(bottom: 0),
                       child: TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
                           hintText: 'Search contacts...',
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                          prefixIcon: const Icon(Icons.search, size: 20),
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.clear),
+                                  icon: const Icon(Icons.close, size: 18),
                                   onPressed: () {
                                     _searchController.clear();
                                     _filterContacts('');
@@ -287,29 +270,150 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                         onChanged: _filterContacts,
                       ),
                     ),
+                    if (selectedCount > 0)
+                      Padding(
+                        padding: AppDimensions.appMargin(context).copyWith(top: 8, bottom: 0),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: AppColors.primary.withValues(alpha: 0.20),
+                                ),
+                              ),
+                              child: Text(
+                                '$selectedCount selected',
+                                style: AppTextStyles.labelSmall(context).copyWith(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: () => setState(() => _selectedPhones.clear()),
+                              child: Text(
+                                'Clear all',
+                                style: AppTextStyles.labelSmall(context).copyWith(
+                                  color: AppColors.error,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    AppDimensions.h10(context),
                     Expanded(
                       child: ListView.builder(
+                        padding: AppDimensions.appMargin(context).copyWith(top: 0),
                         itemCount: _filteredContacts.length,
                         itemBuilder: (context, index) {
                           final contact = _filteredContacts[index];
                           final phone = _normalizePhone(contact.phones.first.number);
                           final isSelected = _selectedPhones.contains(phone);
+                          final initial = contact.displayName.isNotEmpty
+                              ? contact.displayName[0].toUpperCase()
+                              : '?';
 
-                          return CheckboxListTile(
-                            value: isSelected,
-                            onChanged: (checked) {
-                              setState(() {
-                                if (checked == true) {
-                                  _selectedPhones.add(phone);
-                                } else {
-                                  _selectedPhones.remove(phone);
-                                }
-                              });
-                            },
-                            title: Text(contact.displayName),
-                            subtitle: Text(phone),
-                            secondary: CircleAvatar(
-                              child: Text(contact.displayName[0].toUpperCase()),
+                          return GestureDetector(
+                            onTap: () => setState(() {
+                              if (isSelected) {
+                                _selectedPhones.remove(phone);
+                              } else {
+                                _selectedPhones.add(phone);
+                              }
+                            }),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              margin: AppDimensions.compactCardMargin(context),
+                              padding: AppDimensions.compactCardPadding(context),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? AppColors.primary.withValues(alpha: 0.05)
+                                    : scheme.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? AppColors.primary.withValues(alpha: 0.35)
+                                      : AppColors.borderLight,
+                                  width: isSelected ? 1.5 : 1.2,
+                                ),
+                                boxShadow: isSelected ? [] : [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 42,
+                                    height: 42,
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? AppColors.primary
+                                          : AppColors.primary.withValues(alpha: 0.10),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      initial,
+                                      style: AppTextStyles.titleSmall(context).copyWith(
+                                        color: isSelected ? Colors.white : AppColors.primary,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          contact.displayName,
+                                          style: AppTextStyles.titleSmall(context).copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          phone,
+                                          style: AppTextStyles.bodySmall(context),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? AppColors.primary : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(7),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? AppColors.primary
+                                            : AppColors.borderLight,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: isSelected
+                                        ? const Icon(Icons.check_rounded,
+                                            size: 15, color: Colors.white)
+                                        : null,
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },

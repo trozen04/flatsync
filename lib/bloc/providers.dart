@@ -35,8 +35,9 @@ class ExpenseProvider extends ChangeNotifier {
   }) async {
     // Generate UUID with device ID and timestamp for guaranteed uniqueness
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final uuid = '${_deviceId}_${timestamp}_${const Uuid().v4().substring(0, 8)}';
-    
+    final uuid =
+        '${_deviceId}_${timestamp}_${const Uuid().v4().substring(0, 8)}';
+
     final expense = ExpenseModel(
       uuid: uuid,
       amount: amount,
@@ -72,23 +73,19 @@ class ExpenseProvider extends ChangeNotifier {
 class BalanceProvider extends ChangeNotifier {
   final ExpenseProvider _expenseProvider;
   List<UserBalance> _balances = [];
-  List<Settlement> _settlements = [];
 
   BalanceProvider(this._expenseProvider) {
     _expenseProvider.addListener(_recalculate);
   }
 
   List<UserBalance> get balances => _balances;
-  List<Settlement> get settlements => _settlements;
 
   void _recalculate() {
     _updateBalances();
   }
 
   void _updateBalances() {
-    final result = SettlementService.calculateFull(_expenseProvider.expenses);
-    _balances = result.balances;
-    _settlements = result.settlements;
+    _balances = SettlementService.calculateBalances(_expenseProvider.expenses);
     notifyListeners();
   }
 
@@ -124,4 +121,3 @@ class SyncProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
-

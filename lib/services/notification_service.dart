@@ -11,19 +11,24 @@ class NotificationService {
 
   NotificationService(this._api);
 
-  /// Call once after login / signup to register the device token.
-  Future<void> registerDevice() async {
+  /// Call after login / signup to register the device token.
+  /// Keep `requestPermission` false for silent registration.
+  Future<void> registerDevice({bool requestPermission = false}) async {
     try {
-      // Request notification permission (iOS + Android 13+)
-      final settings = await _fcm.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      if (requestPermission) {
+        final settings = await _fcm.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
 
-      if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        developer.log('NotificationService: permission denied', name: 'NotificationService');
-        return;
+        if (settings.authorizationStatus == AuthorizationStatus.denied) {
+          developer.log(
+            'NotificationService: permission denied',
+            name: 'NotificationService',
+          );
+          return;
+        }
       }
 
       final token = await _fcm.getToken();
@@ -34,7 +39,20 @@ class NotificationService {
       // Keep token fresh when FCM rotates it
       _fcm.onTokenRefresh.listen(_sendToken);
     } catch (e) {
-      developer.log('NotificationService: registerDevice error: $e', name: 'NotificationService');
+      developer.log('NotificationService: registerDevice error: $e',
+          name: 'NotificationService');
+    }
+  }
+
+  Future<bool> hasNotificationPermission() async {
+    try {
+      final settings = await _fcm.getNotificationSettings();
+      return settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+    } catch (e) {
+      developer.log('NotificationService: permission check error: $e',
+          name: 'NotificationService');
+      return false;
     }
   }
 
@@ -44,7 +62,8 @@ class NotificationService {
       await _api.patch(ApiConfig.usersFcmToken, data: {'fcmToken': null});
       await _fcm.deleteToken();
     } catch (e) {
-      developer.log('NotificationService: unregisterDevice error: $e', name: 'NotificationService');
+      developer.log('NotificationService: unregisterDevice error: $e',
+          name: 'NotificationService');
     }
   }
 
@@ -57,9 +76,11 @@ class NotificationService {
   Future<void> _sendToken(String token) async {
     try {
       await _api.patch(ApiConfig.usersFcmToken, data: {'fcmToken': token});
-      developer.log('NotificationService: token registered', name: 'NotificationService');
+      developer.log('NotificationService: token registered',
+          name: 'NotificationService');
     } catch (e) {
-      developer.log('NotificationService: token send error: $e', name: 'NotificationService');
+      developer.log('NotificationService: token send error: $e',
+          name: 'NotificationService');
     }
   }
 }

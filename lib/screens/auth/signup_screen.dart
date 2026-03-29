@@ -10,6 +10,7 @@ import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/custom_snackbar.dart';
 import '../../utils/phone_utils.dart';
+import '../../widgets/gradient_app_bar.dart';
 import 'otp_verify_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -162,7 +163,7 @@ class _SignupScreenState extends State<SignupScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        appBar: AppBar(title: const Text('Sign Up')),
+        appBar: const GradientAppBar(title: 'Sign Up'),
         body: Padding(
           padding: AppDimensions.appMargin(context),
           child: Column(

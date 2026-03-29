@@ -8,11 +8,16 @@ class AppPreferencesService extends ChangeNotifier {
   static const String _biometricEnabledKey = 'biometric_enabled_v1';
   static const String _currencyManuallySelectedKey =
       'currency_manually_selected_v1';
+  static const String _notificationPromptSeenKey =
+      'notification_prompt_seen_v1';
+  static const String _notificationsEnabledKey = 'notifications_enabled_v1';
 
   SharedPreferences? _prefs;
   String _preferredCurrencyCode = AppCurrencies.defaultCode;
   bool _biometricEnabled = false;
   bool _currencyManuallySelected = false;
+  bool _notificationPromptSeen = false;
+  bool _notificationsEnabled = false;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -22,12 +27,18 @@ class AppPreferencesService extends ChangeNotifier {
     _biometricEnabled = prefs.getBool(_biometricEnabledKey) ?? false;
     _currencyManuallySelected =
         prefs.getBool(_currencyManuallySelectedKey) ?? false;
+    _notificationPromptSeen =
+        prefs.getBool(_notificationPromptSeenKey) ?? false;
+    _notificationsEnabled = prefs.getBool(_notificationsEnabledKey) ?? false;
   }
 
   String get preferredCurrencyCode => _preferredCurrencyCode;
-  AppCurrency get preferredCurrency => AppCurrencies.byCode(_preferredCurrencyCode);
+  AppCurrency get preferredCurrency =>
+      AppCurrencies.byCode(_preferredCurrencyCode);
   bool get biometricEnabled => _biometricEnabled;
   bool get currencyManuallySelected => _currencyManuallySelected;
+  bool get notificationPromptSeen => _notificationPromptSeen;
+  bool get notificationsEnabled => _notificationsEnabled;
 
   Future<void> setPreferredCurrency(
     String code, {
@@ -58,6 +69,24 @@ class AppPreferencesService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setNotificationPromptSeen(bool seen) async {
+    if (seen == _notificationPromptSeen) return;
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.setBool(_notificationPromptSeenKey, seen);
+    _notificationPromptSeen = seen;
+    notifyListeners();
+  }
+
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    if (enabled == _notificationsEnabled) return;
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.setBool(_notificationsEnabledKey, enabled);
+    _notificationsEnabled = enabled;
+    notifyListeners();
+  }
+
   Future<void> autoSetCurrencyFromCountry(String? countryIsoCode) async {
     if (_currencyManuallySelected) return;
 
@@ -72,16 +101,22 @@ class AppPreferencesService extends ChangeNotifier {
     _prefs = prefs;
 
     final biometricValue = preserveBiometric ? _biometricEnabled : false;
+    final notificationPromptValue = _notificationPromptSeen;
 
     await prefs.clear();
 
     if (preserveBiometric && biometricValue) {
       await prefs.setBool(_biometricEnabledKey, true);
     }
+    if (notificationPromptValue) {
+      await prefs.setBool(_notificationPromptSeenKey, true);
+    }
 
     _preferredCurrencyCode = AppCurrencies.defaultCode;
     _biometricEnabled = preserveBiometric ? biometricValue : false;
     _currencyManuallySelected = false;
+    _notificationPromptSeen = notificationPromptValue;
+    _notificationsEnabled = false;
     notifyListeners();
   }
 

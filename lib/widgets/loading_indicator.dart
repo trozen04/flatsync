@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../constants/app_colors.dart';
+import '../constants/app_text_styles.dart';
 
 class LoadingIndicator extends StatelessWidget {
   final bool isLoading;
@@ -18,10 +20,10 @@ class LoadingIndicator extends StatelessWidget {
       child: isLoading
           ? Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF1565C0),
+                color: AppColors.primary,
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF1565C0).withOpacity(0.3),
+                    color: AppColors.primary.withValues(alpha: 0.30),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -42,8 +44,7 @@ class LoadingIndicator extends StatelessWidget {
                     const SizedBox(width: 10),
                     Text(
                       message,
-                      style: const TextStyle(
-                        fontSize: 13,
+                      style: AppTextStyles.labelSmall(context).copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.3,
@@ -57,4 +58,3 @@ class LoadingIndicator extends StatelessWidget {
     );
   }
 }
-

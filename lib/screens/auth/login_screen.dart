@@ -9,7 +9,6 @@ import '../../services/app_preferences_service.dart';
 import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
 import '../../services/isar_service.dart';
-import '../../services/notification_service.dart';
 import '../../utils/custom_snackbar.dart';
 import '../shell/app_shell.dart';
 import 'forgot_pin_screen.dart';
@@ -38,14 +37,16 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
 
     try {
-      developer.log('LoginScreen: login request ($_phoneNumber)', name: 'LoginScreen');
+      developer.log('LoginScreen: login request ($_phoneNumber)',
+          name: 'LoginScreen');
       final authService = context.read<AuthService>();
       final isar = context.read<IsarService>();
       final user = await authService.login(
         phoneNumber: _phoneNumber,
         pin: _pinController.text,
       );
-      developer.log('LoginScreen: login response userId=${user.userId}', name: 'LoginScreen');
+      developer.log('LoginScreen: login response userId=${user.userId}',
+          name: 'LoginScreen');
 
       await isar.replaceCurrentUser(user);
 
@@ -54,11 +55,6 @@ class _LoginScreenState extends State<LoginScreen> {
         contactService: context.read(),
         isar: isar,
       );
-
-      // Register FCM token and request location permission
-      final notificationService = context.read<NotificationService>();
-      await notificationService.registerDevice();
-      await notificationService.requestLocationPermission();
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -92,9 +88,8 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 Text(
                   'SplitEasy',
-                  style: AppTextStyles.displayMedium(context).copyWith(
-                    fontWeight: FontWeight.bold
-                  ),
+                  style: AppTextStyles.displayMedium(context)
+                      .copyWith(fontWeight: FontWeight.bold),
                 ),
                 AppDimensions.h50(context),
                 IntlPhoneField(
@@ -114,7 +109,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         .autoSetCurrencyFromCountry(country.code);
                   },
                   onChanged: (phone) {
-                    final digits = phone.number.replaceAll(RegExp(r'[^0-9]'), '');
+                    final digits =
+                        phone.number.replaceAll(RegExp(r'[^0-9]'), '');
                     if (digits.length >= 6 && digits.length <= 15) {
                       _phoneNumber = phone.completeNumber;
                     }
@@ -130,9 +126,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     labelText: 'PIN',
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
-                      icon: Icon(
-                          _obscurePin ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _obscurePin = !_obscurePin),
+                      icon: Icon(_obscurePin
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _obscurePin = !_obscurePin),
                     ),
                   ),
                   keyboardType: TextInputType.number,
@@ -187,4 +185,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-

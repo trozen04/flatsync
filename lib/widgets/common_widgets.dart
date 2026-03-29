@@ -142,7 +142,7 @@ class BalanceCard extends StatelessWidget {
           Row(
             children: [
               CircleAvatar(
-                backgroundColor: AppColors.primary.withOpacity(0.1),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                 child: Text(
                   displayName[0].toUpperCase(),
                   style: AppTextStyles.labelLarge(context).copyWith(
@@ -254,12 +254,12 @@ class SettlementItem extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Icon(Icons.arrow_forward, color: Colors.blue),
+                Icon(Icons.arrow_forward, color: AppColors.primary),
                 const SizedBox(height: 4),
                 Text(
                   formatMinorUnits(amount, currencyCode: currencyCode),
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.green,
+                        color: AppColors.success,
                         fontWeight: FontWeight.bold,
                       ),
                 ),
@@ -323,7 +323,7 @@ class SyncStatusWidget extends StatelessWidget {
             Icon(
               Icons.cloud_done,
               size: 16,
-              color: lastSyncTime != null ? Colors.green : Colors.grey,
+              color: lastSyncTime != null ? AppColors.success : AppColors.textTertiary,
             ),
           const SizedBox(width: 8),
           Expanded(
