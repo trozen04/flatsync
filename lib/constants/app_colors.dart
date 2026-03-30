@@ -48,6 +48,17 @@ class AppColors {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
+
+  // App bar colors
+  static const Color appBarStart = Color(0xFF0A1929);
+  static const Color appBarEnd = primary;
+  static const Color appBarAccent = Color(0xFF6EE7B7);
+
+  static const LinearGradient appBarGradient = LinearGradient(
+    colors: [appBarStart, appBarEnd],
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+  );
   
   static const LinearGradient surfaceGradient = LinearGradient(
     colors: [surface, surfaceVariant],

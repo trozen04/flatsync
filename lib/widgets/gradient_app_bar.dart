@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../constants/app_colors.dart';
+import '../constants/app_shadows.dart';
 import '../constants/app_text_styles.dart';
 
 /// A reusable gradient AppBar consistent with the app shell design.
@@ -7,12 +9,14 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
   final bool automaticallyImplyLeading;
+  final bool showBackButton;
 
   const GradientAppBar({
     super.key,
     required this.title,
     this.actions,
     this.automaticallyImplyLeading = true,
+    this.showBackButton = true,
   });
 
   @override
@@ -23,19 +27,9 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
     return PreferredSize(
       preferredSize: preferredSize,
       child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF0A1929), Color(0xFF0E2B95)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x330E2B95),
-              blurRadius: 16,
-              offset: Offset(0, 4),
-            ),
-          ],
+        decoration: BoxDecoration(
+          gradient: AppColors.appBarGradient,
+          boxShadow: AppShadows.appBar,
         ),
         child: AppBar(
           backgroundColor: Colors.transparent,
@@ -51,7 +45,7 @@ class GradientAppBar extends StatelessWidget implements PreferredSizeWidget {
                 width: 4,
                 height: 22,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6EE7B7),
+                  color: AppColors.appBarAccent,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),

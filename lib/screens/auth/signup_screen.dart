@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../../constants/app_dimensions.dart';
+import '../../utils/image_assets.dart';
 import '../../widgets/custom_button.dart';
 import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
@@ -167,8 +168,11 @@ class _SignupScreenState extends State<SignupScreen> {
         body: Padding(
           padding: AppDimensions.appMargin(context),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
+              AppDimensions.h50(context),
+              Image.asset(ImageAssets.nameIcon, fit: BoxFit.cover, height: AppDimensions.height(context) * 0.1,),
+              AppDimensions.h50(context),
               IntlPhoneField(
                 initialCountryCode: 'IN',
                 disableLengthCheck: false,

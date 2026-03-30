@@ -1,3 +1,4 @@
+import 'package:flatsync/utils/image_assets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
@@ -10,6 +11,7 @@ import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
 import '../../services/isar_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../widgets/gradient_app_bar.dart';
 import '../shell/app_shell.dart';
 import 'forgot_pin_screen.dart';
 import 'signup_screen.dart';
@@ -80,17 +82,15 @@ class _LoginScreenState extends State<LoginScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
+        appBar: const GradientAppBar(title: 'Welcome', showBackButton: false),
         body: SafeArea(
           child: Padding(
             padding: AppDimensions.appMargin(context),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                Text(
-                  'SplitEasy',
-                  style: AppTextStyles.displayMedium(context)
-                      .copyWith(fontWeight: FontWeight.bold),
-                ),
+                AppDimensions.h50(context),
+                Image.asset(ImageAssets.nameIcon, fit: BoxFit.cover, height: AppDimensions.height(context) * 0.1,),
                 AppDimensions.h50(context),
                 IntlPhoneField(
                   initialCountryCode: 'IN',

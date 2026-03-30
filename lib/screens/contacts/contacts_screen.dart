@@ -6,6 +6,7 @@ import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
 
 import '../../constants/app_dimensions.dart';
+import '../../constants/app_ads.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_text_styles.dart';
 import '../../services/app_preferences_service.dart';
@@ -13,6 +14,7 @@ import '../../widgets/app_card.dart';
 import '../../widgets/app_page_sections.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/loading_indicator.dart';
+import '../../widgets/native_ad_widget.dart';
 import '../../models/contact_model.dart';
 import '../../services/isar_service.dart';
 import '../../services/contact_service.dart';
@@ -265,6 +267,26 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return _balancesByCanonicalPhone[phoneKey] ?? 0;
   }
 
+  bool _isNativeAdSlot(int index) {
+    final interval = AppAds.nativeAdEveryN;
+    return interval > 0 &&
+        _contacts.length >= interval &&
+        (index + 1) % (interval + 1) == 0;
+  }
+
+  int _realItemIndexForDisplayIndex(int displayIndex) {
+    final interval = AppAds.nativeAdEveryN;
+    if (interval <= 0) return displayIndex;
+    final adSlotsBefore = (displayIndex + 1) ~/ (interval + 1);
+    return displayIndex - adSlotsBefore;
+  }
+
+  int _displayItemCount() {
+    final interval = AppAds.nativeAdEveryN;
+    final adCount = interval > 0 ? _contacts.length ~/ interval : 0;
+    return _contacts.length + adCount + (_loadingMoreContacts ? 1 : 0);
+  }
+
   Color _balanceColor(int amount) {
     if (amount > 0) return AppColors.success;
     if (amount < 0) return AppColors.error;
@@ -504,27 +526,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
           child: Column(
             children: [
               LoadingIndicator(isLoading: _syncing || _refreshing),
-              AppCard(
-                type: AppCardType.outlined,
-                padding: AppDimensions.fieldPadding(context),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search people or phone numbers',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    suffixIcon: _query.isEmpty
-                        ? null
-                        : IconButton(
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                            icon: const Icon(Icons.close),
-                          ),
-                  ),
-                  onChanged: _onSearchChanged,
+              TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search people or phone numbers',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                  onPressed: () {
+                    _searchController.clear();
+                    _onSearchChanged('');
+                  },
+                  icon: const Icon(Icons.close),
                 ),
               ),
+              onChanged: _onSearchChanged,
+            ),
               AppDimensions.h10(context),
               Row(
                 children: [
@@ -580,10 +598,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         child: ListView.builder(
                           controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount:
-                              _contacts.length + (_loadingMoreContacts ? 1 : 0),
+                          itemCount: _displayItemCount(),
                           itemBuilder: (context, index) {
-                            if (index >= _contacts.length) {
+                            if (_loadingMoreContacts &&
+                                index == _displayItemCount() - 1) {
                               return Padding(
                                 padding: EdgeInsets.symmetric(
                                   vertical: AppDimensions.compactCardMargin(context).bottom,
@@ -592,7 +610,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               );
                             }
 
-                            final contact = _contacts[index];
+                            if (_isNativeAdSlot(index)) {
+                              return const NativeAdWidget();
+                            }
+
+                            final contact =
+                                _contacts[_realItemIndexForDisplayIndex(index)];
                             final balance = _balanceForContact(contact);
                             final displayName =
                                 contact.name?.trim().isNotEmpty == true

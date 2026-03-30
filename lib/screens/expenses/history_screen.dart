@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../constants/app_dimensions.dart';
+import '../../constants/app_ads.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_text_styles.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/detail_dialog.dart';
 import '../../widgets/loading_indicator.dart';
 import '../../widgets/banner_ad_widget.dart';
+import '../../widgets/native_ad_widget.dart';
 import '../../bloc/contact_provider.dart';
 import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
@@ -116,6 +118,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  bool _isNativeAdSlot(int index) {
+    const interval = AppAds.nativeAdEveryN;
+    return interval > 0 &&
+        _filtered.length >= interval &&
+        (index + 1) % (interval + 1) == 0;
+  }
+
+  int _realItemIndexForDisplayIndex(int displayIndex) {
+    const interval = AppAds.nativeAdEveryN;
+    if (interval <= 0) return displayIndex;
+    final adSlotsBefore = (displayIndex + 1) ~/ (interval + 1);
+    return displayIndex - adSlotsBefore;
+  }
+
+  int _displayItemCount() {
+    const interval = AppAds.nativeAdEveryN;
+    final adCount = interval > 0 ? _filtered.length ~/ interval : 0;
+    return _filtered.length + adCount + (_loadingMore ? 1 : 0);
+  }
+
   List<Map<String, dynamic>> _normalizeTimeline(List<Map<String, dynamic>> rows) {
     return rows.map((raw) {
       final item = Map<String, dynamic>.from(raw);
@@ -193,6 +215,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         final preferredCurrencyCode =
             context.watch<AppPreferencesService>().preferredCurrencyCode;
         final pageMargin = AppDimensions.appMargin(context);
+        final displayCount = _displayItemCount();
 
         if (_allTransactions.isEmpty && !_refreshing) {
           final hasSearch = _searchQuery.trim().isNotEmpty;
@@ -236,9 +259,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           children: [
             LoadingIndicator(isLoading: _refreshing),
             // Search bar
-            AppCard(
-              type: AppCardType.outlined,
-              padding: AppDimensions.fieldPadding(context),
+            Padding(
+              padding: AppDimensions.appMargin(context),
               child: Row(
                 children: [
                   Expanded(
@@ -249,13 +271,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         prefixIcon: const Icon(Icons.search, size: 20),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.close, size: 18),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _searchQuery = '';
-                                  _loadHistory(forceRefresh: true);
-                                },
-                              )
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            _searchQuery = '';
+                            _loadHistory(forceRefresh: true);
+                          },
+                        )
                             : null,
                         contentPadding: AppDimensions.fieldPadding(context),
                       ),
@@ -264,8 +286,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         setState(() => _searchQuery = v);
                         _searchDebounce =
                             Timer(const Duration(milliseconds: 250), () {
-                          if (mounted) _loadHistory(forceRefresh: true);
-                        });
+                              if (mounted) _loadHistory(forceRefresh: true);
+                            });
                       },
                     ),
                   ),
@@ -273,56 +295,56 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     IconButton(
                       icon: _exporting
                           ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                           : const Icon(Icons.download),
                       tooltip: 'Export CSV',
                       onPressed: _exporting
                           ? null
                           : () async {
-                              setState(() => _exporting = true);
-                              final messenger = ScaffoldMessenger.of(context);
-                              try {
-                                await ExportUtils.exportAndShare(_filtered);
-                              } catch (_) {
-                                messenger.showSnackBar(
-                                  const SnackBar(content: Text('Export failed')),
-                                );
-                              } finally {
-                                if (mounted) setState(() => _exporting = false);
-                              }
-                            },
-                    ),
-                ],
-              ),
-            ),
-            AppDimensions.h10(context),
-            // Filter chips
-            AppCard(
-              type: AppCardType.outlined,
-              padding: AppDimensions.fieldPadding(context),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final f in [
-                    ('all', 'All'),
-                    ('expense', 'Expenses'),
-                    ('transaction', 'Transactions'),
-                  ])
-                    FilterChip(
-                      label: Text(f.$2),
-                      selected: _typeFilter == f.$1,
-                      onSelected: (_) {
-                        setState(() => _typeFilter = f.$1);
-                        _applyFilter();
+                        setState(() => _exporting = true);
+                        final messenger = ScaffoldMessenger.of(context);
+                        try {
+                          await ExportUtils.exportAndShare(_filtered);
+                        } catch (_) {
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('Export failed')),
+                          );
+                        } finally {
+                          if (mounted) setState(() => _exporting = false);
+                        }
                       },
                     ),
                 ],
               ),
             ),
+            // AppDimensions.h10(context),
+
+            // Filter chips
+            Wrap(
+              alignment: WrapAlignment.start,
+              spacing: 20,
+              runSpacing: 4, // vertical space
+              children: [
+                for (final f in [
+                  ('all', 'All'),
+                  ('expense', 'Expenses'),
+                  ('transaction', 'Transactions'),
+                ])
+                  FilterChip(
+                    label: Text(f.$2),
+                    selected: _typeFilter == f.$1,
+                    onSelected: (_) {
+                      setState(() => _typeFilter = f.$1);
+                      _applyFilter();
+                    },
+                  ),
+              ],
+            ),
+
+            // AppDimensions.h10(context),
             // Transaction list
             Expanded(
               child: RefreshIndicator(
@@ -338,6 +360,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ],
                       )
                     : ListView.builder(
+                        shrinkWrap: true,
                         controller: _scrollController,
                         padding: EdgeInsets.fromLTRB(
                           pageMargin.left,
@@ -346,9 +369,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           pageMargin.bottom +
                               AppDimensions.compactCardMargin(context).bottom,
                         ),
-                        itemCount: _filtered.length + (_loadingMore ? 1 : 0),
+                        itemCount: displayCount,
                         itemBuilder: (context, index) {
-                          if (index == _filtered.length) {
+                          if (_loadingMore && index == displayCount - 1) {
                             return Center(
                               child: Padding(
                                 padding: AppDimensions.fieldPadding(context),
@@ -357,7 +380,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             );
                           }
 
-                          final item = _filtered[index];
+                          if (_isNativeAdSlot(index)) {
+                            return const NativeAdWidget();
+                          }
+
+                          final item = _filtered[_realItemIndexForDisplayIndex(index)];
                           final type = (item['type'] as String?) ?? '';
                           final amountPaise = (item['amount'] as num?)?.round() ?? 0;
                           final totalAmountPaise = (item['totalAmount'] as num?)?.round();
@@ -592,7 +619,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
             // Banner Ad — list ke neeche, navbar ke upar
-            const BannerAdWidget(),
+            // const BannerAdWidget(),
           ],
         );
       },

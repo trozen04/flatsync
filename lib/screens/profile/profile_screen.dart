@@ -366,11 +366,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Text(
                       'Edit account',
-                      style: AppTextStyles.titleLarge(sheetContext).copyWith(
+                      style: AppTextStyles.titleMedium(sheetContext).copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    AppDimensions.h10(sheetContext),
+                    AppDimensions.h20(sheetContext),
                     TextField(
                       controller: nameController,
                       textCapitalization: TextCapitalization.words,
@@ -556,7 +556,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onEditAccount: _editAccountDetails,
                     ),
                     AppDimensions.h20(context),
-                    AppSectionHeader(
+                    const AppSectionHeader(
                       title: 'Preferences',
                       subtitle: 'Security, currency, and notification controls.',
                     ),
