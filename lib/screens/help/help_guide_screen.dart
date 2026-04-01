@@ -96,8 +96,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                   ],
                 ),
                 AppDimensions.h20(context),
-                Text('How to use', style: AppTextStyles.titleMedium(context)),
-                AppDimensions.h10(context),
+
                 const HelpBulletCard(
                   title: 'How to use',
                   bullets: [

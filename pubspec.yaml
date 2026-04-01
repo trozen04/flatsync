@@ -21,7 +21,6 @@ dependencies:
   # Networking & API
   dio: ^5.4.0
   connectivity_plus: ^5.0.0
-  http: ^1.1.0
   uuid: ^4.0.0
 
   # Authentication & Security

@@ -598,6 +598,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         child: ListView.builder(
                           controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 120),
                           itemCount: _displayItemCount(),
                           itemBuilder: (context, index) {
                             if (_loadingMoreContacts &&

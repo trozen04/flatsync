@@ -119,7 +119,7 @@ class HelpBulletCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (title != null) ...[
+        if (title != null && title!.isNotEmpty) ...[
           Text(title!, style: AppTextStyles.titleMedium(context)),
           const SizedBox(height: 10),
         ],
@@ -137,7 +137,7 @@ class HelpBulletCard extends StatelessWidget {
               children: bullets
                   .map(
                     (text) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

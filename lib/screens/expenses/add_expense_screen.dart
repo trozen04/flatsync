@@ -284,7 +284,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final perPersonMinorUnits = _selectedParticipants.isEmpty
         ? 0
         : (totalPaise / (_selectedParticipants.length + 1)).round();
-    final bottomClearance = 120.0 + mediaQuery.viewPadding.bottom;
+    final bottomClearance = 120.0 + mediaQuery.viewPadding.bottom + mediaQuery.viewInsets.bottom;
 
     if (_loadingContacts) {
       return const Center(child: CircularProgressIndicator());
@@ -338,7 +338,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         backgroundColor: Theme.of(context).colorScheme.background,
-        resizeToAvoidBottomInset: true,
+        resizeToAvoidBottomInset: false,
         body: RefreshIndicator(
           onRefresh: _loadLocalContacts,
           child: SingleChildScrollView(

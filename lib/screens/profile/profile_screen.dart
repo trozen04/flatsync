@@ -547,6 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ? const Center(child: CircularProgressIndicator())
               : ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: 120),
                   children: [
                     _ProfileHeroCard(
                       name: _user?.name ?? 'Your profile',
@@ -599,7 +600,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                     AppDimensions.h20(context),
-                    AppSectionHeader(
+                    const AppSectionHeader(
                       title: 'Help & legal',
                       subtitle: 'Support, policies, and app information.',
                     ),
@@ -634,7 +635,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
-                    AppDimensions.h20(context),
                   ],
                 ),
               ),

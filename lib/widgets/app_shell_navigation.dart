@@ -37,7 +37,7 @@ class AppShellNavigation extends StatelessWidget {
           height: navHeight,
           decoration: BoxDecoration(
             color: AppColors.textPrimary,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
                 color: AppColors.primary.withValues(alpha: 0.45),
@@ -145,7 +145,7 @@ class _NavButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeInOut,
-        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: selected

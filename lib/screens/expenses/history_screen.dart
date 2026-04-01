@@ -138,7 +138,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return _filtered.length + adCount + (_loadingMore ? 1 : 0);
   }
 
-  List<Map<String, dynamic>> _normalizeTimeline(List<Map<String, dynamic>> rows) {
+  List<Map<String, dynamic>> _normalizeTimeline(
+      List<Map<String, dynamic>> rows) {
     return rows.map((raw) {
       final item = Map<String, dynamic>.from(raw);
       final createdAt = item['createdAt'];
@@ -150,7 +151,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       } else if (item['type'] == 'transaction') {
         final counterparty = item['counterparty'];
         if (counterparty is Map) {
-          item['counterparty'] = counterparty['_id']?.toString();
+          item['counterparty'] =
+              counterparty.map((k, v) => MapEntry(k.toString(), v));
         }
       }
       return item;
@@ -227,7 +229,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.history, size: 64, color: Colors.grey.shade400),
+                      Icon(Icons.history,
+                          size: 64, color: Colors.grey.shade400),
                       AppDimensions.h20(context),
                       Text(
                         hasSearch ? 'No results' : 'No history yet',
@@ -271,13 +274,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         prefixIcon: const Icon(Icons.search, size: 20),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
-                          icon: const Icon(Icons.close, size: 18),
-                          onPressed: () {
-                            _searchController.clear();
-                            _searchQuery = '';
-                            _loadHistory(forceRefresh: true);
-                          },
-                        )
+                                icon: const Icon(Icons.close, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _searchQuery = '';
+                                  _loadHistory(forceRefresh: true);
+                                },
+                              )
                             : null,
                         contentPadding: AppDimensions.fieldPadding(context),
                       ),
@@ -286,8 +289,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         setState(() => _searchQuery = v);
                         _searchDebounce =
                             Timer(const Duration(milliseconds: 250), () {
-                              if (mounted) _loadHistory(forceRefresh: true);
-                            });
+                          if (mounted) _loadHistory(forceRefresh: true);
+                        });
                       },
                     ),
                   ),
@@ -295,39 +298,42 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     IconButton(
                       icon: _exporting
                           ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Icon(Icons.download),
                       tooltip: 'Export CSV',
                       onPressed: _exporting
                           ? null
                           : () async {
-                        setState(() => _exporting = true);
-                        final messenger = ScaffoldMessenger.of(context);
-                        try {
-                          final allPage = await context
-                              .read<ExpenseService>()
-                              .getTimeline(
-                                limit: 9999,
-                                forceRefresh: true,
-                                search: _searchQuery.trim(),
-                              );
-                          final allItems = _normalizeTimeline(allPage.items)
-                              .where((item) {
-                            final type = (item['type'] as String?) ?? '';
-                            return _typeFilter == 'all' || type == _typeFilter;
-                          }).toList();
-                          await ExportUtils.exportAndShare(allItems);
-                        } catch (_) {
-                          messenger.showSnackBar(
-                            const SnackBar(content: Text('Export failed')),
-                          );
-                        } finally {
-                          if (mounted) setState(() => _exporting = false);
-                        }
-                      },
+                              setState(() => _exporting = true);
+                              final messenger = ScaffoldMessenger.of(context);
+                              try {
+                                final allPage = await context
+                                    .read<ExpenseService>()
+                                    .getTimeline(
+                                      limit: 9999,
+                                      forceRefresh: true,
+                                      search: _searchQuery.trim(),
+                                    );
+                                final allItems =
+                                    _normalizeTimeline(allPage.items)
+                                        .where((item) {
+                                  final type = (item['type'] as String?) ?? '';
+                                  return _typeFilter == 'all' ||
+                                      type == _typeFilter;
+                                }).toList();
+                                await ExportUtils.exportAndShare(allItems);
+                              } catch (_) {
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Export failed')),
+                                );
+                              } finally {
+                                if (mounted) setState(() => _exporting = false);
+                              }
+                            },
                     ),
                 ],
               ),
@@ -378,8 +384,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           pageMargin.left,
                           pageMargin.top,
                           pageMargin.right,
-                          pageMargin.bottom +
-                              AppDimensions.compactCardMargin(context).bottom,
+                          120,
                         ),
                         itemCount: displayCount,
                         itemBuilder: (context, index) {
@@ -396,18 +401,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             return const NativeAdWidget();
                           }
 
-                          final item = _filtered[_realItemIndexForDisplayIndex(index)];
+                          final item =
+                              _filtered[_realItemIndexForDisplayIndex(index)];
                           final type = (item['type'] as String?) ?? '';
-                          final amountPaise = (item['amount'] as num?)?.round() ?? 0;
-                          final totalAmountPaise = (item['totalAmount'] as num?)?.round();
-                          final participants = (item['participants'] as num?)?.round() ?? 0;
-                          final description = (item['description'] as String?) ?? '';
+                          final amountPaise =
+                              (item['amount'] as num?)?.round() ?? 0;
+                          final totalAmountPaise =
+                              (item['totalAmount'] as num?)?.round();
+                          final participants =
+                              (item['participants'] as num?)?.round() ?? 0;
+                          final description =
+                              (item['description'] as String?) ?? '';
                           final paidBy = item['paidBy'] as String?;
                           final counterpartyRaw = item['counterparty'];
-                          final counterpartySummary = counterpartyRaw is Map
-                              ? counterpartyRaw.map((k, v) => MapEntry(k.toString(), v))
-                              : null;
-                          final counterparty = counterpartySummary?['_id']?.toString();
+                          final counterpartySummary =
+                              counterpartyRaw is Map<String, dynamic>
+                                  ? counterpartyRaw
+                                  : null;
+                          final counterparty =
+                              counterpartySummary?['_id']?.toString();
                           final direction = item['direction'] as String?;
                           final date = item['createdAt'] as DateTime;
 
@@ -451,7 +463,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           return AppCard(
                             type: AppCardType.elevated,
                             margin: EdgeInsets.only(
-                              bottom: AppDimensions.compactCardMargin(context).bottom,
+                              bottom: AppDimensions.compactCardMargin(context)
+                                  .bottom,
                             ),
                             padding: AppDimensions.compactCardPadding(context),
                             onTap: () {
@@ -540,7 +553,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     ),
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: amountColor.withValues(alpha: 0.22),
+                                      color:
+                                          amountColor.withValues(alpha: 0.22),
                                       width: 1.2,
                                     ),
                                   ),
@@ -557,12 +571,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         description,
                                         style: AppTextStyles.titleSmall(context)
-                                            .copyWith(fontWeight: FontWeight.w700),
+                                            .copyWith(
+                                                fontWeight: FontWeight.w700),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -588,7 +604,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       fit: BoxFit.scaleDown,
                                       child: Text(
                                         formatMinorUnits(amountPaise,
-                                            currencyCode: preferredCurrencyCode),
+                                            currencyCode:
+                                                preferredCurrencyCode),
                                         style: AppTextStyles.labelLarge(context)
                                             .copyWith(
                                           color: amountColor,
@@ -601,10 +618,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 8, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: amountColor.withValues(alpha: 0.10),
+                                        color:
+                                            amountColor.withValues(alpha: 0.10),
                                         borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                          color: amountColor.withValues(alpha: 0.25),
+                                          color: amountColor.withValues(
+                                              alpha: 0.25),
                                         ),
                                       ),
                                       child: Text(
@@ -630,7 +649,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
               ),
             ),
-            // Banner Ad — list ke neeche, navbar ke upar
+
+
+            // Banner Ad
             // const BannerAdWidget(),
           ],
         );

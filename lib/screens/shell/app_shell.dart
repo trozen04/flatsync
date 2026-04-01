@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../constants/app_dimensions.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/app_shell_navigation.dart';
 import '../../widgets/gradient_app_bar.dart';
@@ -180,6 +181,7 @@ class _AppShellState extends State<AppShell> {
               ),
           ],
         ),
+        extendBody: true,
         bottomNavigationBar: AppShellNavigation(
           selectedIndex: _selectedIndex,
           onSelected: _selectTab,

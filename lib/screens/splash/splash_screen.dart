@@ -2,6 +2,7 @@ import 'package:flatsync/constants/app_dimensions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:in_app_update/in_app_update.dart';
 
 import '../auth/biometric_gate_screen.dart';
 import '../auth/login_screen.dart';
@@ -42,6 +43,23 @@ class _SplashScreenState extends State<SplashScreen>
     super.dispose();
   }
 
+  Future<void> _checkForUpdate() async {
+    try {
+      final info = await InAppUpdate.checkForUpdate();
+      if (!mounted) return;
+      if (info.updateAvailability == UpdateAvailability.updateAvailable) {
+        if (info.immediateUpdateAllowed) {
+          await InAppUpdate.performImmediateUpdate();
+        } else if (info.flexibleUpdateAllowed) {
+          await InAppUpdate.startFlexibleUpdate();
+          await InAppUpdate.completeFlexibleUpdate();
+        }
+      }
+    } catch (_) {
+      // Not on Play Store or check failed — ignore
+    }
+  }
+
   Future<void> _navigate() async {
     final authService = context.read<AuthService>();
     final preferences = context.read<AppPreferencesService>();
@@ -51,6 +69,7 @@ class _SplashScreenState extends State<SplashScreen>
       authService.isLoggedIn(),
       Future.value(prefs.getBool(OnboardingScreen.seenKey) ?? false),
       Future.delayed(const Duration(milliseconds: 1800)),
+      _checkForUpdate(),
     ]);
 
     if (!mounted) return;
