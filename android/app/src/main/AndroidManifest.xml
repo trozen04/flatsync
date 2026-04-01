@@ -5,6 +5,9 @@
     
     <!-- Contacts permission -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Required for Google Mobile Ads (AdMob) on Android 13+ -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
     
 
     <application

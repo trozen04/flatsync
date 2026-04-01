@@ -2,11 +2,14 @@ class ApiConfig {
   // Environment-based configuration
   static const bool isProduction = bool.fromEnvironment('dart.vm.product');
 
-  // Production URL - UPDATE THIS WITH YOUR ACTUAL PRODUCTION URL
-  static const String productionUrl =
-      'https://flatsync-backend.onrender.com/api';
+  /// Production URL - UPDATE THIS WITH YOUR ACTUAL PRODUCTION URL
+  // static const String productionUrl =
+  //     'https://flatsync-backend.onrender.com/api';
 
-  // Development URL - Use your computer's IP address
+  static const String productionUrl =
+      'https://flatsyncbackend-production.up.railway.app/api';
+
+  /// Development URL - Use your computer's IP address
   static const String developmentUrl = 'http://192.168.1.44:5000/api';
 
   // Auto-select based on build mode

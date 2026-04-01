@@ -99,8 +99,6 @@ Future<void> main() async {
   final expenseService = ExpenseService(apiService, isarService);
   final notificationService = NotificationService(apiService);
   final interstitialAdService = InterstitialAdService();
-  // Silent server wake-up
-  apiService.wakeUpServer();
 
   runApp(
     MultiProvider(

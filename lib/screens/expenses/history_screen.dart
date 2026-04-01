@@ -307,7 +307,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         setState(() => _exporting = true);
                         final messenger = ScaffoldMessenger.of(context);
                         try {
-                          await ExportUtils.exportAndShare(_filtered);
+                          final allPage = await context
+                              .read<ExpenseService>()
+                              .getTimeline(
+                                limit: 9999,
+                                forceRefresh: true,
+                                search: _searchQuery.trim(),
+                              );
+                          final allItems = _normalizeTimeline(allPage.items)
+                              .where((item) {
+                            final type = (item['type'] as String?) ?? '';
+                            return _typeFilter == 'all' || type == _typeFilter;
+                          }).toList();
+                          await ExportUtils.exportAndShare(allItems);
                         } catch (_) {
                           messenger.showSnackBar(
                             const SnackBar(content: Text('Export failed')),

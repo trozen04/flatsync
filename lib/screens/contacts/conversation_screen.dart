@@ -25,6 +25,7 @@ import '../../utils/custom_snackbar.dart';
 import '../../utils/network_error_handler.dart';
 import '../../services/interstitial_ad_service.dart';
 import '../../widgets/app_dialog.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ConversationScreen extends StatefulWidget {
   final ContactModel contact;
@@ -387,6 +388,72 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
+  void _shareEntry(Map<String, dynamic> item, String currencyCode) {
+    final type = item['type'] as String? ?? '';
+    final description = item['description'] as String? ?? '';
+    final amount = (item['amount'] as num?)?.round() ?? 0;
+    final totalAmount = (item['totalAmount'] as num?)?.round();
+    final direction = item['direction'] as String? ?? '';
+    final date = DateTime.parse(item['createdAt'] as String);
+    final contactName = widget.contact.name ?? 'Contact';
+    final isYouPaid = direction == 'you_paid' || direction == 'sent';
+
+    String text;
+    if (type == 'expense') {
+      text = '🧾 Expense with $contactName\n'
+          '${description.isNotEmpty ? '$description\n' : ''
+          }Your share: ${formatMinorUnits(amount, currencyCode: currencyCode)}'
+          '${totalAmount != null ? '\nTotal: ${formatMinorUnits(totalAmount, currencyCode: currencyCode)}' : ''}\n'
+          '📅 ${AppDateUtils.formatDateTime(date)}';
+    } else {
+      text = '💸 Payment with $contactName\n'
+          '${description.isNotEmpty ? '$description\n' : ''}'
+          '${isYouPaid ? 'You paid' : 'You received'}: ${formatMinorUnits(amount, currencyCode: currencyCode)}\n'
+          '📅 ${AppDateUtils.formatDateTime(date)}';
+    }
+    Share.share(text);
+  }
+
+  Future<void> _shareAll(String currencyCode) async {
+    final contactName = widget.contact.name ?? 'Contact';
+
+    List<dynamic> allItems = _transactions;
+    try {
+      final contactId = await _ensureResolvedContactId();
+      if (contactId != null && contactId.isNotEmpty) {
+        final page = await context.read<ExpenseService>().getTimeline(
+              withUserId: contactId,
+              withUserPhone: widget.contact.phoneNumber,
+              forceRefresh: true,
+              limit: 9999,
+            );
+        allItems = page.items;
+      }
+    } catch (_) {
+      // fallback to loaded items
+    }
+
+    final buffer = StringBuffer();
+    buffer.writeln('📊 Expense Summary with $contactName');
+    buffer.writeln('Balance: ${formatMinorUnits(_balance, currencyCode: currencyCode)}');
+    buffer.writeln('─────────────────');
+
+    for (final item in allItems.reversed) {
+      final type = item['type'] as String? ?? '';
+      final description = item['description'] as String? ?? '';
+      final amount = (item['amount'] as num?)?.round() ?? 0;
+      final direction = item['direction'] as String? ?? '';
+      final date = DateTime.parse(item['createdAt'] as String);
+      final isYouPaid = direction == 'you_paid' || direction == 'sent';
+      final icon = type == 'expense' ? '🧾' : (isYouPaid ? '💸' : '💰');
+      buffer.writeln(
+        '$icon ${AppDateUtils.formatDate(date)} · ${formatMinorUnits(amount, currencyCode: currencyCode)}'
+        '${description.isNotEmpty ? ' · $description' : ''}',
+      );
+    }
+    Share.share(buffer.toString());
+  }
+
   Future<void> _openEntryActions({
     required String type,
     required String? entryId,
@@ -649,6 +716,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
       resizeToAvoidBottomInset: false,
       appBar: GradientAppBar(
         title: widget.contact.name ?? 'Conversation',
+        actions: [
+          if (_transactions.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.share_outlined),
+              tooltip: 'Share all',
+              onPressed: () => _shareAll(
+                context.read<AppPreferencesService>().preferredCurrencyCode,
+              ),
+            ),
+        ],
       ),
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -967,7 +1044,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                           (value) async {
                                                         final selectedEntryId =
                                                             entryId;
-                                                        if (value ==
+                                                        if (value == 'share') {
+                                                          _shareEntry(item, preferredCurrencyCode);
+                                                        } else if (value ==
                                                             'edit_expense') {
                                                           await _handleExpenseEdit(
                                                             expenseId:
@@ -994,6 +1073,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                       },
                                                       itemBuilder: (context) =>
                                                           [
+                                                        const PopupMenuItem<String>(
+                                                          value: 'share',
+                                                          child: Row(
+                                                            children: [
+                                                              Icon(Icons.share_outlined, size: 16),
+                                                              SizedBox(width: 8),
+                                                              Text('Share'),
+                                                            ],
+                                                          ),
+                                                        ),
                                                         if (canEditExpense)
                                                           const PopupMenuItem<
                                                               String>(

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_config.dart';
 
 class ApiService {
@@ -101,29 +100,6 @@ class ApiService {
     _dio.options.headers.remove('Authorization');
   }
 
-  void wakeUpServer() {
-    unawaited((() async {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final lastWakeUpRaw = prefs.get('last_wake_up');
-        final lastWakeUp = (lastWakeUpRaw is int) ? lastWakeUpRaw : 
-                          (lastWakeUpRaw is double) ? lastWakeUpRaw.toInt() :
-                          (lastWakeUpRaw is String) ? int.tryParse(lastWakeUpRaw) ?? 0 : 0;
-        final now = DateTime.now().millisecondsSinceEpoch;
-        
-        if (now - lastWakeUp < 900000) return;
-        
-        try {
-          await prefs.setInt('last_wake_up', now);
-        } catch (_) {}
 
-        unawaited((() async {
-          try {
-            await _dio.get('/health', options: Options(sendTimeout: const Duration(seconds: 5)));
-          } catch (_) {}
-        })());
-      } catch (_) {}
-    })());
-  }
 }
 
