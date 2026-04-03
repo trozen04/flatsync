@@ -276,9 +276,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final sameDay = now.year == seenAt.year &&
         now.month == seenAt.month &&
         now.day == seenAt.day;
-    return sameDay
-        ? 'Seen ${AppDateUtils.formatTime(seenAt)}'
-        : 'Seen ${AppDateUtils.formatShortDate(seenAt)}';
+    if (sameDay) return 'Seen today at ${AppDateUtils.formatTime(seenAt)}';
+    return 'Seen on ${AppDateUtils.formatDate(seenAt)}';
   }
 
   Future<bool> _confirmDelete({
@@ -1235,15 +1234,24 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                   ] else if (isYouPaid &&
                                                       seenByOther) ...[
                                                     const SizedBox(height: 4),
-                                                    Text(
-                                                      _formatSeenLabel(seenAt),
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                        color: AppColors
-                                                            .textSecondary,
-                                                      ),
+                                                    Row(
+                                                      children: [
+                                                        const Icon(
+                                                          Icons.done_all_rounded,
+                                                          size: 11,
+                                                          color: AppColors.success,
+                                                        ),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          _formatSeenLabel(seenAt),
+                                                          style: const TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.w500,
+                                                            color: AppColors.success,
+                                                            fontStyle: FontStyle.italic,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ],
                                                 ],
@@ -1313,7 +1321,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                             ? null
                             : _addTransactionFromChat,
                         icon: const Icon(Icons.payments),
-                        label: const Text('Add Transaction'),
+                        label: const FittedBox(child: Text('Add Transaction')),
                       ),
                     ),
                   ],
