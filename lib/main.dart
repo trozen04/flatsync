@@ -100,6 +100,11 @@ Future<void> main() async {
   final notificationService = NotificationService(apiService);
   final interstitialAdService = InterstitialAdService();
 
+  await notificationService.preloadToken();
+  if (appPreferencesService.notificationsEnabled && await authService.isLoggedIn()) {
+    await notificationService.syncTokenToServer();
+  }
+
   runApp(
     MultiProvider(
       providers: [

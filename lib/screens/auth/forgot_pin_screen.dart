@@ -271,7 +271,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                   TextField(
                     controller: _pinController,
                     decoration: InputDecoration(
-                      labelText: 'New PIN (4-6 digits)',
+                      labelText: 'New PIN (4 digits)',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(_obscurePin
@@ -284,7 +284,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     obscureText: _obscurePin,
-                    maxLength: 6,
+                    maxLength: 4,
                   ),
                   AppDimensions.h10(context),
                   SizedBox(

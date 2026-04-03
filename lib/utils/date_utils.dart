@@ -1,5 +1,4 @@
 import 'package:intl/intl.dart';
-import 'timezone_utils.dart';
 
 /// Centralized date formatting utility for consistent date display across the app
 class AppDateUtils {
@@ -11,15 +10,20 @@ class AppDateUtils {
   
   /// Short date format for compact displays: "31/12"
   static final DateFormat _shortDateFormat = DateFormat('d/M');
+
+  /// Convert a stored timestamp into the device's current local timezone.
+  static DateTime _localDateTime(DateTime date) {
+    return date.isUtc ? date.toLocal() : date;
+  }
   
   /// Format date as "31 Dec, 2026"
   static String formatDate(DateTime date) {
-    return _dateFormat.format(date);
+    return _dateFormat.format(_localDateTime(date));
   }
   
   /// Format time as "2:30 PM"
   static String formatTime(DateTime date) {
-    return _timeFormat.format(date);
+    return _timeFormat.format(_localDateTime(date));
   }
   
   /// Format date and time as "31 Dec, 2026 at 2:30 PM"
@@ -29,26 +33,23 @@ class AppDateUtils {
   
   /// Format short date as "31/12"
   static String formatShortDate(DateTime date) {
-    return _shortDateFormat.format(date);
+    return _shortDateFormat.format(_localDateTime(date));
   }
 
-  /// Format date and time with timezone conversion based on phone number
-  /// If no phone number provided, uses the date as-is
+  /// Format date and time in the device's local timezone.
   static String formatDateTimeWithTimezone(DateTime date, String? phoneNumber) {
-    final convertedDate = TimezoneUtils.convertToUserTimezone(date, phoneNumber);
-    return formatDateTime(convertedDate);
+    return formatDateTime(date);
   }
 
-  /// Format time with timezone conversion
+  /// Format time in the device's local timezone.
   static String formatTimeWithTimezone(DateTime date, String? phoneNumber) {
-    final convertedDate = TimezoneUtils.convertToUserTimezone(date, phoneNumber);
-    return formatTime(convertedDate);
+    return formatTime(date);
   }
 
   /// Get relative time string like "just now", "5 mins ago", "2 hours ago", etc.
   static String formatRelativeTime(DateTime dateTime) {
     final now = DateTime.now();
-    final difference = now.difference(dateTime);
+    final difference = now.difference(_localDateTime(dateTime));
 
     if (difference.inSeconds < 60) {
       return 'Just now';
@@ -69,10 +70,8 @@ class AppDateUtils {
     }
   }
 
-  /// Get relative time with timezone conversion
+  /// Get relative time in the device's local timezone.
   static String formatRelativeTimeWithTimezone(DateTime dateTime, String? phoneNumber) {
-    final convertedDate = TimezoneUtils.convertToUserTimezone(dateTime, phoneNumber);
-    return formatRelativeTime(convertedDate);
+    return formatRelativeTime(dateTime);
   }
 }
-

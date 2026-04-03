@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui';
 import 'app_colors.dart';
+import 'flutter_font_style.dart';
 
 class AppTextStyles {
-  static final TextStyle _baseStyle = GoogleFonts.inter();
+  static final TextStyle _baseStyle = FlutterFontStyle.textStyle();
 
   static TextStyle _style(
     BuildContext context, {

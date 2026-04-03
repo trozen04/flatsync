@@ -79,7 +79,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                           Uri.parse('mailto:${AppInfo.supportEmail}'),
                         ),
                         icon: const Icon(Icons.support_agent_rounded),
-                        label: const Text('Contact support'),
+                        label: const FittedBox(child: Text('Contact support')),
                       ),
                     ),
                     const SizedBox(width: 12),

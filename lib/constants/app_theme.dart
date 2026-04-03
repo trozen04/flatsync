@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
+import 'flutter_font_style.dart';
 
 class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
+      fontFamily: FlutterFontStyle.family,
       colorScheme: const ColorScheme.light(
         primary: AppColors.primary,
         onPrimary: Colors.white,
@@ -21,7 +22,12 @@ class AppTheme {
         surfaceVariant: AppColors.surfaceVariant,
         onSurfaceVariant: AppColors.textSecondary,
       ),
-      textTheme: GoogleFonts.interTextTheme(),
+      textTheme: ThemeData.light().textTheme.apply(
+            fontFamily: FlutterFontStyle.family,
+          ),
+      primaryTextTheme: ThemeData.light().primaryTextTheme.apply(
+            fontFamily: FlutterFontStyle.family,
+          ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
@@ -138,6 +144,7 @@ class AppTheme {
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
+      fontFamily: FlutterFontStyle.family,
       colorScheme: const ColorScheme.dark(
         primary: AppColors.primaryLight,
         onPrimary: AppColors.darkBackground,
@@ -153,7 +160,12 @@ class AppTheme {
         surfaceVariant: AppColors.darkSurfaceVariant,
         onSurfaceVariant: AppColors.darkTextSecondary,
       ),
-      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+      textTheme: ThemeData.dark().textTheme.apply(
+            fontFamily: FlutterFontStyle.family,
+          ),
+      primaryTextTheme: ThemeData.dark().primaryTextTheme.apply(
+            fontFamily: FlutterFontStyle.family,
+          ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.darkSurface,
         foregroundColor: AppColors.darkTextPrimary,

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../constants/app_text_styles.dart';
+import '../../constants/flutter_font_style.dart';
 import '../../screens/auth/login_screen.dart';
 import '../../utils/image_assets.dart';
 
@@ -340,7 +340,7 @@ class _BrandHeader extends StatelessWidget {
         const SizedBox(width: 10),
         Text(
           'SplitEasy',
-          style: GoogleFonts.inter(
+          style: FlutterFontStyle.textStyle(
             fontSize: 20,
             fontWeight: FontWeight.w800,
             color: const Color(0xFF161616),

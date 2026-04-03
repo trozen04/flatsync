@@ -578,6 +578,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   style: TextButton.styleFrom(
                     padding: AppDimensions.buttonMargin(context),
                     visualDensity: VisualDensity.compact,
+                    shadowColor: Colors.black
                   ),
                 ),
               ),

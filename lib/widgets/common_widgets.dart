@@ -8,6 +8,7 @@ import 'package:flatsync/constants/app_currencies.dart';
 import 'package:flatsync/constants/app_spacing.dart';
 import 'package:flatsync/constants/app_text_styles.dart';
 import 'package:flatsync/services/app_preferences_service.dart';
+import 'package:flatsync/utils/date_utils.dart';
 import 'package:flatsync/utils/money_utils.dart';
 import 'package:flatsync/widgets/app_card.dart';
 import 'package:flatsync/widgets/app_input.dart';
@@ -360,17 +361,6 @@ class SyncStatusWidget extends StatelessWidget {
   }
 
   String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final diff = now.difference(time);
-
-    if (diff.inSeconds < 60) {
-      return 'Just now';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}h ago';
-    } else {
-      return '${diff.inDays}d ago';
-    }
+    return AppDateUtils.formatRelativeTime(time);
   }
 }

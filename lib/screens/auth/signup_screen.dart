@@ -165,65 +165,82 @@ class _SignupScreenState extends State<SignupScreen> {
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         appBar: const GradientAppBar(title: 'Sign Up'),
-        body: Padding(
-          padding: AppDimensions.appMargin(context),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              AppDimensions.h50(context),
-              Image.asset(ImageAssets.nameIcon, fit: BoxFit.cover, height: AppDimensions.height(context) * 0.1,),
-              AppDimensions.h50(context),
-              IntlPhoneField(
-                initialCountryCode: 'IN',
-                disableLengthCheck: false,
-                decoration: const InputDecoration(
-                  labelText: 'Phone Number',
-                  border: OutlineInputBorder(),
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Padding(
+                    padding: AppDimensions.appMargin(context),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        AppDimensions.h50(context),
+                        Image.asset(
+                          ImageAssets.nameIcon,
+                          fit: BoxFit.cover,
+                          height: AppDimensions.height(context) * 0.07 ,
+                        ),
+                        AppDimensions.h50(context),
+                        IntlPhoneField(
+                          initialCountryCode: 'IN',
+                          disableLengthCheck: false,
+                          decoration: const InputDecoration(
+                            labelText: 'Phone Number',
+                            border: OutlineInputBorder(),
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(15),
+                          ],
+                          onCountryChanged: (country) {
+                            context
+                                .read<AppPreferencesService>()
+                                .autoSetCurrencyFromCountry(country.code);
+                          },
+                          onChanged: (phone) {
+                            final digits =
+                                phone.number.replaceAll(RegExp(r'[^0-9]'), '');
+                            setState(() {
+                              _phoneNumber = digits.length >= 6 && digits.length <= 15
+                                  ? phone.completeNumber
+                                  : '';
+                            });
+                            context
+                                .read<AppPreferencesService>()
+                                .autoSetCurrencyFromCountry(phone.countryISOCode);
+                            _syncCountdown();
+                          },
+                        ),
+                        AppDimensions.h20(context),
+                        SizedBox(
+                          width: double.infinity,
+                          child: CustomButton(
+                            text: !_isOtpBypassed && _countdown > 0
+                                ? 'Wait $_countdown seconds'
+                                : 'Send Code',
+                            onPressed: _sendOtp,
+                            isLoading: _loading,
+                          ),
+                        ),
+                        AppDimensions.h10(context),
+                        CustomButton(
+                          text: 'Already have account? Login',
+                          onPressed: () => Navigator.pop(context),
+                          isOutlined: true,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(15),
-                ],
-                onCountryChanged: (country) {
-                  context
-                      .read<AppPreferencesService>()
-                      .autoSetCurrencyFromCountry(country.code);
-                },
-                onChanged: (phone) {
-                  final digits = phone.number.replaceAll(RegExp(r'[^0-9]'), '');
-                  setState(() {
-                    _phoneNumber = digits.length >= 6 && digits.length <= 15
-                        ? phone.completeNumber
-                        : '';
-                  });
-                  context
-                      .read<AppPreferencesService>()
-                      .autoSetCurrencyFromCountry(phone.countryISOCode);
-                  _syncCountdown();
-                },
-              ),
-              AppDimensions.h20(context),
-              SizedBox(
-                width: double.infinity,
-                child: CustomButton(
-                  text: !_isOtpBypassed && _countdown > 0
-                      ? 'Wait $_countdown seconds'
-                      : 'Send Code',
-                  onPressed: _sendOtp,
-                  isLoading: _loading,
-                ),
-              ),
-              AppDimensions.h10(context),
-              CustomButton(
-                text: 'Already have account? Login',
-                onPressed: () => Navigator.pop(context),
-                isOutlined: true,
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
     );
   }
 }
-
