@@ -18,7 +18,7 @@ class TermsScreen extends StatelessWidget {
             bottom: AppDimensions.height(context) * 0.08,
           ),
           children: [
-            HelpHeroCard(
+            const HelpHeroCard(
               icon: Icons.description_rounded,
               title: 'Terms for using SplitEasy',
               subtitle:

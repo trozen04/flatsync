@@ -25,6 +25,7 @@ import '../../utils/custom_snackbar.dart';
 import '../../utils/network_error_handler.dart';
 import '../../services/interstitial_ad_service.dart';
 import '../../widgets/app_dialog.dart';
+import '../../constants/app_info.dart';
 import 'package:share_plus/share_plus.dart';
 
 class ConversationScreen extends StatefulWidget {
@@ -66,8 +67,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _loadLocalFirst() async {
     if (mounted) setState(() => _syncing = true);
     try {
-      final contactId = await _ensureResolvedContactId();
       final expenseService = context.read<ExpenseService>();
+      final contactId = await _ensureResolvedContactId();
       late final List<dynamic> localData;
 
       if (contactId != null && contactId.isNotEmpty) {
@@ -111,8 +112,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
     _serverSyncing = true;
     try {
-      final contactId = await _ensureResolvedContactId();
       final expenseService = context.read<ExpenseService>();
+      final contactId = await _ensureResolvedContactId();
       late final List<dynamic> serverData;
 
       if (contactId != null && contactId.isNotEmpty) {
@@ -183,6 +184,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (phone == null || phone.isEmpty) return null;
 
     final contactService = context.read<ContactService>();
+    final isar = context.read<IsarService>();
     final resolved = await contactService.addContactByPhone(phone);
     if (resolved == null ||
         resolved.contactId == null ||
@@ -197,8 +199,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
       widget.contact.name = resolved.name;
     }
     widget.contact.updatedAt = DateTime.now();
-
-    final isar = context.read<IsarService>();
     await contactService.upsertContactsByCanonical(isar, [widget.contact]);
     contactService.notifyUpdate();
     if (mounted) setState(() {});
@@ -226,10 +226,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
     setState(() => _loadingMore = true);
 
     try {
+      final expenseService = context.read<ExpenseService>();
       final contactId = await _ensureResolvedContactId();
       if (contactId == null || contactId.isEmpty) return;
-
-      final expenseService = context.read<ExpenseService>();
       final page = await expenseService.getTimeline(
         withUserId: contactId,
         withUserPhone: widget.contact.phoneNumber,
@@ -301,6 +300,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     required int totalAmount,
     required int participantsCount,
   }) async {
+    final expenseService = context.read<ExpenseService>();
+    final overlay = Overlay.of(context);
     // Warn if multiple participants
     if (participantsCount > 1) {
       final proceed = await AppConfirmDialog.show(
@@ -321,18 +322,18 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (input == null || !mounted) return;
 
     try {
-      await context.read<ExpenseService>().updateExpense(
-            expenseId: expenseId,
-            description: input['description'] as String,
-            totalAmount: input['amountPaise'] as int,
-          );
+      await expenseService.updateExpense(
+        expenseId: expenseId,
+        description: input['description'] as String,
+        totalAmount: input['amountPaise'] as int,
+      );
       if (!mounted) return;
-      CustomSnackBar.show(context, message: 'Expense updated');
+      CustomSnackBar.showOnOverlay(overlay, message: 'Expense updated');
       await _syncFromServer();
     } catch (e) {
       if (!mounted) return;
-      CustomSnackBar.show(
-        context,
+      CustomSnackBar.showOnOverlay(
+        overlay,
         message: NetworkErrorHandler.moneyWrite(),
         isError: true,
       );
@@ -341,6 +342,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   Future<void> _handleExpenseDelete(String expenseId,
       {required int participantsCount}) async {
+    final expenseService = context.read<ExpenseService>();
+    final overlay = Overlay.of(context);
     final message = participantsCount > 1
         ? 'This expense is shared with $participantsCount people. Deleting will remove it for all of them.'
         : 'Are you sure you want to delete this expense?';
@@ -351,14 +354,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (!confirmed || !mounted) return;
 
     try {
-      await context.read<ExpenseService>().deleteExpense(expenseId);
+      await expenseService.deleteExpense(expenseId);
       if (!mounted) return;
-      CustomSnackBar.show(context, message: 'Expense deleted');
+      CustomSnackBar.showOnOverlay(overlay, message: 'Expense deleted');
       await _syncFromServer();
     } catch (e) {
       if (!mounted) return;
-      CustomSnackBar.show(
-        context,
+      CustomSnackBar.showOnOverlay(
+        overlay,
         message: NetworkErrorHandler.moneyWrite(),
         isError: true,
       );
@@ -366,6 +369,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _handleTransactionDelete(String transactionId) async {
+    final expenseService = context.read<ExpenseService>();
+    final overlay = Overlay.of(context);
     final confirmed = await _confirmDelete(
       title: 'Delete Transaction',
       message: 'Are you sure you want to delete this transaction?',
@@ -373,14 +378,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (!confirmed || !mounted) return;
 
     try {
-      await context.read<ExpenseService>().deleteTransaction(transactionId);
+      await expenseService.deleteTransaction(transactionId);
       if (!mounted) return;
-      CustomSnackBar.show(context, message: 'Transaction deleted');
+      CustomSnackBar.showOnOverlay(overlay, message: 'Transaction deleted');
       await _syncFromServer();
     } catch (e) {
       if (!mounted) return;
-      CustomSnackBar.show(
-        context,
+      CustomSnackBar.showOnOverlay(
+        overlay,
         message: NetworkErrorHandler.moneyWrite(),
         isError: true,
       );
@@ -400,8 +405,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     String text;
     if (type == 'expense') {
       text = '🧾 Expense with $contactName\n'
-          '${description.isNotEmpty ? '$description\n' : ''
-          }Your share: ${formatMinorUnits(amount, currencyCode: currencyCode)}'
+          '${description.isNotEmpty ? '$description\n' : ''}Your share: ${formatMinorUnits(amount, currencyCode: currencyCode)}'
           '${totalAmount != null ? '\nTotal: ${formatMinorUnits(totalAmount, currencyCode: currencyCode)}' : ''}\n'
           '📅 ${AppDateUtils.formatDateTime(date)}';
     } else {
@@ -410,22 +414,23 @@ class _ConversationScreenState extends State<ConversationScreen> {
           '${isYouPaid ? 'You paid' : 'You received'}: ${formatMinorUnits(amount, currencyCode: currencyCode)}\n'
           '📅 ${AppDateUtils.formatDateTime(date)}';
     }
-    Share.share(text);
+    Share.share('$text\n\n${AppInfo.inviteMessage}');
   }
 
   Future<void> _shareAll(String currencyCode) async {
     final contactName = widget.contact.name ?? 'Contact';
+    final expenseService = context.read<ExpenseService>();
 
     List<dynamic> allItems = _transactions;
     try {
       final contactId = await _ensureResolvedContactId();
       if (contactId != null && contactId.isNotEmpty) {
-        final page = await context.read<ExpenseService>().getTimeline(
-              withUserId: contactId,
-              withUserPhone: widget.contact.phoneNumber,
-              forceRefresh: true,
-              limit: 9999,
-            );
+        final page = await expenseService.getTimeline(
+          withUserId: contactId,
+          withUserPhone: widget.contact.phoneNumber,
+          forceRefresh: true,
+          limit: 9999,
+        );
         allItems = page.items;
       }
     } catch (_) {
@@ -434,7 +439,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
     final buffer = StringBuffer();
     buffer.writeln('📊 Expense Summary with $contactName');
-    buffer.writeln('Balance: ${formatMinorUnits(_balance, currencyCode: currencyCode)}');
+    buffer.writeln(
+        'Balance: ${formatMinorUnits(_balance, currencyCode: currencyCode)}');
     buffer.writeln('─────────────────');
 
     for (final item in allItems.reversed) {
@@ -450,7 +456,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         '${description.isNotEmpty ? ' · $description' : ''}',
       );
     }
-    Share.share(buffer.toString());
+    Share.share('${buffer.toString()}\n\n${AppInfo.inviteMessage}');
   }
 
   Future<void> _openEntryActions({
@@ -501,12 +507,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
       cancelLabel:
           canDeleteExpense || canDeleteTransaction ? 'Delete' : 'Cancel',
     ).then((v) {
-      if (v == true)
+      if (v == true) {
         return canEditExpense
             ? 'edit_expense'
             : (canDeleteExpense ? 'delete_expense' : 'delete_transaction');
-      if (v == false && (canDeleteExpense || canDeleteTransaction))
+      }
+      if (v == false && (canDeleteExpense || canDeleteTransaction)) {
         return canDeleteExpense ? 'delete_expense' : 'delete_transaction';
+      }
       return null;
     });
 
@@ -620,6 +628,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _addExpenseFromChat() async {
     if (_submitting) return;
     final phone = widget.contact.phoneNumber;
+    final overlay = Overlay.of(context);
     if (phone == null || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Contact phone missing')),
@@ -627,6 +636,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       return;
     }
 
+    final expenseService = context.read<ExpenseService>();
     final input = await _showEntryDialog(isTransaction: false);
     if (input == null) return;
 
@@ -634,7 +644,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     try {
       final amount = (input['amountPaise'] as num).toInt();
       final description = (input['description'] as String?)?.trim();
-      await context.read<ExpenseService>().createExpense(
+      await expenseService.createExpense(
         description: (description == null || description.isEmpty)
             ? 'Expense'
             : description,
@@ -646,8 +656,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     } catch (e) {
       developer.log('Add chat expense error: $e');
       if (!mounted) return;
-      CustomSnackBar.show(
-        context,
+      CustomSnackBar.showOnOverlay(
+        overlay,
         message: NetworkErrorHandler.moneyWrite(),
         isError: true,
       );
@@ -658,12 +668,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   Future<void> _addTransactionFromChat() async {
     if (_submitting) return;
+    final expenseService = context.read<ExpenseService>();
+    final overlay = Overlay.of(context);
     final toUserId = await _ensureResolvedContactId();
     final toPhone = widget.contact.phoneNumber;
 
     if ((toUserId == null || toUserId.isEmpty) &&
         (toPhone == null || toPhone.isEmpty)) {
-      CustomSnackBar.show(context,
+      CustomSnackBar.showOnOverlay(overlay,
           message: 'Contact phone number is missing', isError: true);
       return;
     }
@@ -674,19 +686,18 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (mounted) setState(() => _submitting = true);
     try {
       final amount = (input['amountPaise'] as num).toInt();
-      await context.read<ExpenseService>().createTransaction(
-            toUserId:
-                (toUserId != null && toUserId.isNotEmpty) ? toUserId : null,
-            toPhone: (toUserId == null || toUserId.isEmpty) ? toPhone : null,
-            amount: amount,
-          );
+      await expenseService.createTransaction(
+        toUserId: (toUserId != null && toUserId.isNotEmpty) ? toUserId : null,
+        toPhone: (toUserId == null || toUserId.isEmpty) ? toPhone : null,
+        amount: amount,
+      );
       _interstitialAd.onExpenseAdded();
       await _syncFromServer();
     } catch (e) {
       developer.log('Add chat transaction error: $e');
       if (!mounted) return;
-      CustomSnackBar.show(
-        context,
+      CustomSnackBar.showOnOverlay(
+        overlay,
         message: NetworkErrorHandler.moneyWrite(),
         isError: true,
       );
@@ -711,7 +722,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
             : 'All settled';
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       resizeToAvoidBottomInset: false,
       appBar: GradientAppBar(
         title: widget.contact.name ?? 'Conversation',
@@ -1044,7 +1055,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                         final selectedEntryId =
                                                             entryId;
                                                         if (value == 'share') {
-                                                          _shareEntry(item, preferredCurrencyCode);
+                                                          _shareEntry(item,
+                                                              preferredCurrencyCode);
                                                         } else if (value ==
                                                             'edit_expense') {
                                                           await _handleExpenseEdit(
@@ -1072,12 +1084,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                       },
                                                       itemBuilder: (context) =>
                                                           [
-                                                        const PopupMenuItem<String>(
+                                                        const PopupMenuItem<
+                                                            String>(
                                                           value: 'share',
                                                           child: Row(
                                                             children: [
-                                                              Icon(Icons.share_outlined, size: 16),
-                                                              SizedBox(width: 8),
+                                                              Icon(
+                                                                  Icons
+                                                                      .share_outlined,
+                                                                  size: 16),
+                                                              SizedBox(
+                                                                  width: 8),
                                                               Text('Share'),
                                                             ],
                                                           ),
@@ -1237,18 +1254,26 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                     Row(
                                                       children: [
                                                         const Icon(
-                                                          Icons.done_all_rounded,
+                                                          Icons
+                                                              .done_all_rounded,
                                                           size: 11,
-                                                          color: AppColors.success,
+                                                          color:
+                                                              AppColors.success,
                                                         ),
-                                                        const SizedBox(width: 3),
+                                                        const SizedBox(
+                                                            width: 3),
                                                         Text(
-                                                          _formatSeenLabel(seenAt),
-                                                          style: const TextStyle(
+                                                          _formatSeenLabel(
+                                                              seenAt),
+                                                          style:
+                                                              const TextStyle(
                                                             fontSize: 11,
-                                                            fontWeight: FontWeight.w500,
-                                                            color: AppColors.success,
-                                                            fontStyle: FontStyle.italic,
+                                                            fontWeight:
+                                                                FontWeight.w500,
+                                                            color: AppColors
+                                                                .success,
+                                                            fontStyle: FontStyle
+                                                                .italic,
                                                           ),
                                                         ),
                                                       ],

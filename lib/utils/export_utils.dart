@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../constants/app_info.dart';
 import 'date_utils.dart';
 
 class ExportUtils {
@@ -38,6 +39,7 @@ class ExportUtils {
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'text/csv')],
         subject: 'SplitEasy History Export',
+        text: AppInfo.inviteMessage,
       );
     } catch (e) {
       developer.log('Export error: $e');

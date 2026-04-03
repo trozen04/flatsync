@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_text_styles.dart';
+import 'custom_button.dart';
 
 // ─────────────────────────────────────────────
 // Shared helpers
@@ -285,7 +287,8 @@ class AppFormDialog extends StatelessWidget {
                     final i = entry.key;
                     final f = entry.value;
                     return Padding(
-                      padding: EdgeInsets.only(bottom: i < fields.length - 1 ? 14 : 0),
+                      padding: EdgeInsets.only(
+                          bottom: i < fields.length - 1 ? 14 : 0),
                       child: TextField(
                         controller: f.controller,
                         keyboardType: f.keyboardType,
@@ -298,15 +301,18 @@ class AppFormDialog extends StatelessWidget {
                           fillColor: const Color(0xFFF8F9FB),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppColors.border),
+                            borderSide:
+                                const BorderSide(color: AppColors.border),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppColors.border),
+                            borderSide:
+                                const BorderSide(color: AppColors.border),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: accentColor, width: 1.5),
+                            borderSide:
+                                BorderSide(color: accentColor, width: 1.5),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 14, vertical: 14),
@@ -354,6 +360,190 @@ class AppFormDialog extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 3. AppSessionExpiredDialog
+//    Use for: forced logout when the account is signed in elsewhere
+// ─────────────────────────────────────────────────────────────
+
+class AppSessionExpiredDialog extends StatelessWidget {
+  final String message;
+
+  const AppSessionExpiredDialog({
+    super.key,
+    required this.message,
+  });
+
+  static Future<void> show(
+    BuildContext context, {
+    required String message,
+  }) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AppSessionExpiredDialog(message: message),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        decoration: _cardDecoration(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.error.withValues(alpha: 0.14),
+                    AppColors.primary.withValues(alpha: 0.08),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.phonelink_lock_rounded,
+                    size: 30,
+                    color: AppColors.error,
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Session ended',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.titleLarge(context).copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyMedium(context).copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.borderLight),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SessionDetailRow(
+                          icon: Icons.security_rounded,
+                          text:
+                              'For your security, this device has been signed out.',
+                        ),
+                        SizedBox(height: 10),
+                        _SessionDetailRow(
+                          icon: Icons.login_rounded,
+                          text: 'You can log in again with your PIN.',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: AppColors.border),
+                            foregroundColor: AppColors.textSecondary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text(
+                            'Close',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: CustomButton(
+                          text: 'Log in again',
+                          icon: Icons.login_rounded,
+                          backgroundColor: AppColors.error,
+                          onPressed: () => Navigator.pop(context),
+                          height: 50,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionDetailRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _SessionDetailRow({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: AppColors.error),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: AppTextStyles.bodySmall(context).copyWith(
+              color: AppColors.textSecondary,
+              height: 1.45,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

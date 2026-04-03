@@ -25,7 +25,7 @@ class AppAds {
           : _prodNative;
 
   // Testing ke liye 1 rakho - production mein 3 karo
-  static const int interstitialEveryN = 2;
+  static const int interstitialEveryN = 6;
 
   // Inline native ad slot frequency inside long lists.
   static const int nativeAdEveryN = 6;

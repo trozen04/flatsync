@@ -49,7 +49,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(
+        border: const Border(
           top: BorderSide(color: AppColors.borderLight),
         ),
       ),

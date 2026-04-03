@@ -2,6 +2,7 @@ class TransactionModel {
   String transactionId;
   String fromUserId;
   String toUserId;
+  String? toPhone;
   int amount;
   DateTime createdAt;
   DateTime updatedAt;
@@ -11,6 +12,7 @@ class TransactionModel {
     this.transactionId = '',
     this.fromUserId = '',
     this.toUserId = '',
+    this.toPhone,
     this.amount = 0,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -32,6 +34,7 @@ class TransactionModel {
   factory TransactionModel.fromJson(Map<String, dynamic> json) {
     final fromUserId = _extractUserId(json['fromUser']);
     final toUserId = _extractUserId(json['toUser']);
+    final toPhone = (json['toPhone'] as String?)?.trim();
 
     final relatedExpense = json['relatedExpense'];
     String? relatedExpenseId;
@@ -49,6 +52,7 @@ class TransactionModel {
       transactionId: transactionId,
       fromUserId: fromUserId,
       toUserId: toUserId,
+      toPhone: (toPhone != null && toPhone.isNotEmpty) ? toPhone : null,
       amount: (json['amount'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ?? DateTime.now().toUtc(),
       updatedAt: DateTime.tryParse(
@@ -64,6 +68,7 @@ class TransactionModel {
       'transactionId': transactionId,
       'fromUserId': fromUserId,
       'toUserId': toUserId,
+      'toPhone': toPhone,
       'amount': amount,
       'createdAt': createdAt.toUtc().toIso8601String(),
       'updatedAt': updatedAt.toUtc().toIso8601String(),

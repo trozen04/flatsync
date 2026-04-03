@@ -139,6 +139,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
     try {
       final isarService = context.read<IsarService>();
+      final contactService = context.read<ContactService>();
       final requestQuery = _query;
       final int nextOffset = reset ? 0 : _contactsOffset;
       if (!reset && !_hasMoreContacts) return;
@@ -170,7 +171,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       // Non-blocking background reconciliation for contact IDs.
       final shouldReconcile = !_isReconciling &&
-          (context.read<ContactService>().canAttemptLookup) &&
+          contactService.canAttemptLookup &&
           (_lastReconcileAt == null ||
               DateTime.now().difference(_lastReconcileAt!) >
                   const Duration(seconds: 30));
@@ -187,13 +188,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
         if (mounted) {
           unawaited(_loadLocalContacts(reset: true));
         }
-        return;
+      } else if (mounted) {
+        setState(() {
+          _refreshing = false;
+          _loadingMoreContacts = false;
+        });
       }
-      if (!mounted) return;
-      setState(() {
-        _refreshing = false;
-        _loadingMoreContacts = false;
-      });
     }
   }
 
@@ -268,21 +268,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   bool _isNativeAdSlot(int index) {
-    final interval = AppAds.nativeAdEveryN;
+    const interval = AppAds.nativeAdEveryN;
     return interval > 0 &&
         _contacts.length >= interval &&
         (index + 1) % (interval + 1) == 0;
   }
 
   int _realItemIndexForDisplayIndex(int displayIndex) {
-    final interval = AppAds.nativeAdEveryN;
+    const interval = AppAds.nativeAdEveryN;
     if (interval <= 0) return displayIndex;
     final adSlotsBefore = (displayIndex + 1) ~/ (interval + 1);
     return displayIndex - adSlotsBefore;
   }
 
   int _displayItemCount() {
-    final interval = AppAds.nativeAdEveryN;
+    const interval = AppAds.nativeAdEveryN;
     final adCount = interval > 0 ? _contacts.length ~/ interval : 0;
     return _contacts.length + adCount + (_loadingMoreContacts ? 1 : 0);
   }
@@ -324,52 +324,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  Future<void> _syncContacts() async {
-    setState(() => _syncing = true);
-
-    try {
-      final contactService = context.read<ContactService>();
-      final matchedContacts = await contactService.matchContacts();
-
-      if (matchedContacts.isEmpty) {
-        if (mounted) {
-          CustomSnackBar.show(context,
-              message: 'No contacts found', isError: true);
-        }
-      } else {
-        final isar = context.read<IsarService>();
-        await contactService.upsertContactsByCanonical(isar, matchedContacts);
-
-        // Notify all screens about contact updates
-        contactService.notifyUpdate();
-
-        await _refreshData(forceRefresh: true);
-
-        if (mounted) {
-          CustomSnackBar.show(context,
-              message: 'Synced ${matchedContacts.length} contacts');
-        }
-      }
-    } catch (e) {
-      developer.log('Sync contacts error: $e');
-      if (mounted) {
-        CustomSnackBar.show(
-          context,
-          message: NetworkErrorHandler.message(
-            e,
-            fallback: 'Failed to sync contacts',
-          ),
-          isError: true,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _syncing = false);
-    }
-  }
-
   Future<void> _addManualContact() async {
     final nameController = TextEditingController();
     String phoneNumber = '';
+    final overlay = Overlay.of(context);
+    final contactService = context.read<ContactService>();
+    final isar = context.read<IsarService>();
 
     final result = await showDialog<Map<String, String>?>(
       context: context,
@@ -424,7 +384,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     setState(() => _syncing = true);
 
     try {
-      final contactService = context.read<ContactService>();
       final registered =
           await contactService.addContactByPhone(result['phone']!);
 
@@ -439,7 +398,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         contact.name = result['name']!;
       }
 
-      final isar = context.read<IsarService>();
       await contactService.upsertContactsByCanonical(isar, [contact]);
 
       // Notify all screens about contact updates
@@ -448,13 +406,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
       await _refreshData(forceRefresh: true);
 
       if (mounted) {
-        CustomSnackBar.show(context, message: 'Contact added: ${contact.name}');
+        CustomSnackBar.showOnOverlay(
+          overlay,
+          message: 'Contact added: ${contact.name}',
+        );
       }
     } catch (e) {
       developer.log('Add manual contact error: $e');
       if (mounted) {
-        CustomSnackBar.show(
-          context,
+        CustomSnackBar.showOnOverlay(
+          overlay,
           message: NetworkErrorHandler.message(
             e,
             fallback: 'Failed to add contact',
@@ -484,11 +445,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
         onRefresh: () => _refreshData(forceRefresh: true),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.only(bottom: AppDimensions.compactCardMargin(context).bottom),
+          padding: EdgeInsets.only(
+              bottom: AppDimensions.compactCardMargin(context).bottom),
           children: [
             AppDimensions.h20(context),
             AppEmptyStateCard(
-              icon: hasSearch ? Icons.search_off_rounded : Icons.contacts_outlined,
+              icon: hasSearch
+                  ? Icons.search_off_rounded
+                  : Icons.contacts_outlined,
               title: title,
               message: message,
               action: showActions
@@ -527,22 +491,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
             children: [
               LoadingIndicator(isLoading: _syncing || _refreshing),
               TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search people or phone numbers',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                  onPressed: () {
-                    _searchController.clear();
-                    _onSearchChanged('');
-                  },
-                  icon: const Icon(Icons.close),
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search people or phone numbers',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
                 ),
+                onChanged: _onSearchChanged,
               ),
-              onChanged: _onSearchChanged,
-            ),
               AppDimensions.h10(context),
               Row(
                 children: [
@@ -570,16 +534,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
               AppDimensions.h20(context),
               AppSectionHeader(
                 title: 'People',
-                subtitle: 'Each card shows the current balance and quick status.',
+                subtitle:
+                    'Each card shows the current balance and quick status.',
                 action: TextButton.icon(
                   onPressed: _openContactSelection,
                   icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
                   label: const Text('Add contact'),
                   style: TextButton.styleFrom(
-                    padding: AppDimensions.buttonMargin(context),
-                    visualDensity: VisualDensity.compact,
-                    shadowColor: Colors.black
-                  ),
+                      padding: AppDimensions.buttonMargin(context),
+                      visualDensity: VisualDensity.compact,
+                      shadowColor: Colors.black),
                 ),
               ),
               AppDimensions.h10(context),
@@ -606,9 +570,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                 index == _displayItemCount() - 1) {
                               return Padding(
                                 padding: EdgeInsets.symmetric(
-                                  vertical: AppDimensions.compactCardMargin(context).bottom,
+                                  vertical:
+                                      AppDimensions.compactCardMargin(context)
+                                          .bottom,
                                 ),
-                                child: Center(child: CircularProgressIndicator()),
+                                child: const Center(
+                                    child: CircularProgressIndicator()),
                               );
                             }
 
@@ -636,7 +603,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             return AppCard(
                               type: AppCardType.elevated,
                               margin: AppDimensions.compactCardMargin(context),
-                              padding: AppDimensions.compactCardPadding(context),
+                              padding:
+                                  AppDimensions.compactCardPadding(context),
                               onTap: () {
                                 Navigator.push(
                                   context,
@@ -662,14 +630,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                       ),
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: balanceColor.withValues(alpha: 0.20),
+                                        color: balanceColor.withValues(
+                                            alpha: 0.20),
                                         width: 1.5,
                                       ),
                                     ),
                                     alignment: Alignment.center,
                                     child: Text(
                                       initials,
-                                      style: AppTextStyles.titleSmall(context).copyWith(
+                                      style: AppTextStyles.titleSmall(context)
+                                          .copyWith(
                                         color: balanceColor,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -678,7 +648,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Row(
@@ -710,8 +681,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                           contact.phoneNumber ?? '',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: AppTextStyles.bodySmall(context)
-                                              .copyWith(fontSize: 11.5),
+                                          style:
+                                              AppTextStyles.bodySmall(context)
+                                                  .copyWith(fontSize: 11.5),
                                         ),
                                       ],
                                     ),
@@ -725,7 +697,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                         fit: BoxFit.scaleDown,
                                         child: Text(
                                           amountText,
-                                          style: AppTextStyles.labelLarge(context).copyWith(
+                                          style:
+                                              AppTextStyles.labelLarge(context)
+                                                  .copyWith(
                                             color: balanceColor,
                                             fontWeight: FontWeight.w800,
                                           ),
@@ -738,15 +712,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                           vertical: 3,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: balanceColor.withValues(alpha: 0.10),
-                                          borderRadius: BorderRadius.circular(8),
+                                          color: balanceColor.withValues(
+                                              alpha: 0.10),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                           border: Border.all(
-                                            color: balanceColor.withValues(alpha: 0.25),
+                                            color: balanceColor.withValues(
+                                                alpha: 0.25),
                                           ),
                                         ),
                                         child: Text(
                                           balanceLabel,
-                                          style: AppTextStyles.labelSmall(context).copyWith(
+                                          style:
+                                              AppTextStyles.labelSmall(context)
+                                                  .copyWith(
                                             color: balanceColor,
                                             fontWeight: FontWeight.w700,
                                           ),
@@ -797,12 +776,16 @@ class _CompactSummaryCard extends StatelessWidget {
             height: 38,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [color.withValues(alpha: 0.20), color.withValues(alpha: 0.08)],
+                colors: [
+                  color.withValues(alpha: 0.20),
+                  color.withValues(alpha: 0.08)
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.22), width: 1.2),
+              border:
+                  Border.all(color: color.withValues(alpha: 0.22), width: 1.2),
             ),
             child: Icon(icon, color: color, size: 17),
           ),
@@ -824,7 +807,8 @@ class _CompactSummaryCard extends StatelessWidget {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    formatMinorUnits(amount, currencyCode: currencyCode, absolute: true),
+                    formatMinorUnits(amount,
+                        currencyCode: currencyCode, absolute: true),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.labelLarge(context).copyWith(

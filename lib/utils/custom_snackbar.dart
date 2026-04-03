@@ -11,6 +11,20 @@ class CustomSnackBar {
         bool isError = false,
         bool persistent = false,
       }) async {
+    showOnOverlay(
+      Overlay.of(context),
+      message: message,
+      isError: isError,
+      persistent: persistent,
+    );
+  }
+
+  static Future<void> showOnOverlay(
+    OverlayState overlay, {
+    required String message,
+    bool isError = false,
+    bool persistent = false,
+  }) async {
     // If one is still animating → ignore this call
     if (_isAnimating) return;
 
@@ -30,7 +44,7 @@ class CustomSnackBar {
     );
 
     _currentEntry = overlayEntry;
-    Overlay.of(context).insert(overlayEntry);
+    overlay.insert(overlayEntry);
 
     if (!persistent) {
       Future.delayed(const Duration(seconds: 2), () async {

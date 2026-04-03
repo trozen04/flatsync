@@ -20,11 +20,11 @@ class UserDropdown extends StatefulWidget {
   final List<String> availableUsers;
 
   const UserDropdown({
-    Key? key,
+    super.key,
     required this.selectedUser,
     required this.onChanged,
     required this.availableUsers,
-  }) : super(key: key);
+  });
 
   @override
   State<UserDropdown> createState() => _UserDropdownState();
@@ -61,10 +61,10 @@ class AmountInput extends StatefulWidget {
   final String label;
 
   const AmountInput({
-    Key? key,
+    super.key,
     required this.controller,
     this.label = 'Amount',
-  }) : super(key: key);
+  });
 
   @override
   State<AmountInput> createState() => _AmountInputState();
@@ -118,11 +118,11 @@ class BalanceCard extends StatelessWidget {
   final int netBalance;
 
   const BalanceCard({
-    Key? key,
+    super.key,
     required this.userName,
     required this.totalPaid,
     required this.netBalance,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -214,11 +214,11 @@ class SettlementItem extends StatelessWidget {
   final int amount;
 
   const SettlementItem({
-    Key? key,
+    super.key,
     required this.from,
     required this.to,
     required this.amount,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -255,7 +255,7 @@ class SettlementItem extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Icon(Icons.arrow_forward, color: AppColors.primary),
+                const Icon(Icons.arrow_forward, color: AppColors.primary),
                 const SizedBox(height: 4),
                 Text(
                   formatMinorUnits(amount, currencyCode: currencyCode),
@@ -294,11 +294,11 @@ class SyncStatusWidget extends StatelessWidget {
   final VoidCallback onSyncPressed;
 
   const SyncStatusWidget({
-    Key? key,
+    super.key,
     required this.isSyncing,
     required this.lastSyncTime,
     required this.onSyncPressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

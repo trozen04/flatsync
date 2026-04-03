@@ -10,47 +10,57 @@ class SettlementService {
     // Filter out deleted expenses for calculations
     final activeExpenses = expenses.where((e) => !e.isDeleted).toList();
 
-    // Use fixed 4 users from constants instead of dynamic extraction
-    final users = AppConstants.users;
-
-    // Calculate total paid by each person
+    // Build the user set from the actual expense data so the calculation
+    // matches the current dataset instead of a hardcoded demo roster.
+    final users = <String>{};
     final totalPaidByUser = <String, int>{};
-    int totalAmount = 0;
-
-    for (final user in users) {
-      totalPaidByUser[user] = 0;
-    }
+    final totalOwedByUser = <String, int>{};
 
     for (final expense in activeExpenses) {
       final baseUsername = AppConstants.getBaseUsername(expense.paidBy);
-      totalPaidByUser[baseUsername] = (totalPaidByUser[baseUsername] ?? 0) + expense.amount;
-      totalAmount += expense.amount;
+      if (baseUsername.isNotEmpty) {
+        users.add(baseUsername);
+        totalPaidByUser[baseUsername] =
+            (totalPaidByUser[baseUsername] ?? 0) + expense.amount;
+      }
+
+      final participantUsers = expense.participants
+          .map(AppConstants.getBaseUsername)
+          .where((user) => user.trim().isNotEmpty)
+          .toSet()
+          .toList();
+
+      if (participantUsers.isEmpty && baseUsername.isNotEmpty) {
+        participantUsers.add(baseUsername);
+      }
+
+      users.addAll(participantUsers);
+
+      if (participantUsers.isEmpty) {
+        continue;
+      }
+
+      final baseShare = expense.amount ~/ participantUsers.length;
+      final remainder = expense.amount % participantUsers.length;
+
+      for (var i = 0; i < participantUsers.length; i++) {
+        final user = participantUsers[i];
+        final share = baseShare + (i < remainder ? 1 : 0);
+        totalOwedByUser[user] = (totalOwedByUser[user] ?? 0) + share;
+      }
     }
 
-    // Per person equal share - always 4 users
-    final perPersonShare = totalAmount ~/ users.length;
-    final remainingAmount = totalAmount % users.length;
-
-    // Calculate net balance for each user
-    final balances = <UserBalance>[];
-    for (int i = 0; i < users.length; i++) {
-      final user = users[i];
-      final totalPaid = totalPaidByUser[user] ?? 0;
-      // Adjust share for remainder distribution
-      final adjustedShare = perPersonShare + (i < remainingAmount ? 1 : 0);
-      final netBalance = totalPaid - adjustedShare;
-
-      balances.add(
-        UserBalance(
-          user: user,
-          totalPaid: totalPaid,
-          perPersonShare: adjustedShare,
-          netBalance: netBalance,
-        ),
-      );
-    }
-
-    return balances;
+    final balances = users.toList()..sort();
+    return balances
+        .map(
+          (user) => UserBalance(
+            user: user,
+            totalPaid: totalPaidByUser[user] ?? 0,
+            perPersonShare: totalOwedByUser[user] ?? 0,
+            netBalance: (totalPaidByUser[user] ?? 0) - (totalOwedByUser[user] ?? 0),
+          ),
+        )
+        .toList();
   }
 
   /// Calculate minimal settlements needed

@@ -226,6 +226,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     final preferredCurrencyCode =
         context.read<AppPreferencesService>().preferredCurrencyCode;
+    final expenseService = context.read<ExpenseService>();
+    final overlay = Overlay.of(context);
     final amountPaise = parseAmountToMinorUnits(
       _amountController.text,
       currencyCode: preferredCurrencyCode,
@@ -240,14 +242,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     try {
       final desc = _descController.text.trim();
-      await context.read<ExpenseService>().createExpense(
-            description: desc.isEmpty ? 'Expense' : desc,
-            totalAmount: amountPaise,
-            participants: List<String>.from(_selectedParticipants),
-            category: _selectedCategory,
-          );
+      await expenseService.createExpense(
+        description: desc.isEmpty ? 'Expense' : desc,
+        totalAmount: amountPaise,
+        participants: List<String>.from(_selectedParticipants),
+        category: _selectedCategory,
+      );
 
-      CustomSnackBar.show(context, message: 'Expense added successfully');
+      CustomSnackBar.showOnOverlay(
+        overlay,
+        message: 'Expense added successfully',
+      );
       _descController.clear();
       _amountController.clear();
       await _loadRecentAmounts();
@@ -260,8 +265,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     } catch (e) {
       developer.log('Add expense error: $e');
       if (!mounted) return;
-      CustomSnackBar.show(
-        context,
+      CustomSnackBar.showOnOverlay(
+        overlay,
         message: NetworkErrorHandler.moneyWrite(),
         isError: true,
       );
@@ -284,7 +289,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final perPersonMinorUnits = _selectedParticipants.isEmpty
         ? 0
         : (totalPaise / (_selectedParticipants.length + 1)).round();
-    final bottomClearance = 120.0 + mediaQuery.viewPadding.bottom + mediaQuery.viewInsets.bottom;
+    final bottomClearance =
+        120.0 + mediaQuery.viewPadding.bottom + mediaQuery.viewInsets.bottom;
 
     if (_loadingContacts) {
       return const Center(child: CircularProgressIndicator());
@@ -337,7 +343,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         resizeToAvoidBottomInset: false,
         body: RefreshIndicator(
           onRefresh: _loadLocalContacts,
@@ -644,13 +650,12 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
         if (mounted) {
           unawaited(_loadContacts(reset: true));
         }
-        return;
+      } else if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+        });
       }
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadingMore = false;
-      });
     }
   }
 

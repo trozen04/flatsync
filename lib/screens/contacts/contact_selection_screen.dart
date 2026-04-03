@@ -64,6 +64,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
         final result = await Permission.contacts.request();
         if (!result.isGranted) {
           if (mounted) {
+            final navigator = Navigator.of(context);
             final retry = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
@@ -83,7 +84,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
               ),
             );
             if (retry == true) await openAppSettings();
-            Navigator.pop(context);
+            navigator.pop();
           }
           return;
         }
@@ -148,6 +149,8 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
     }
     setState(() => _syncing = true);
     try {
+      final isar = context.read<IsarService>();
+      final contactService = context.read<ContactService>();
       final selectedContacts = _deviceContacts
           .where((c) => _selectedPhones.contains(_normalizePhone(c.phones.first.number)))
           .toList();
@@ -156,7 +159,6 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
           .map((c) => {'name': c.displayName, 'phone': _normalizePhone(c.phones.first.number)})
           .toList();
 
-      final contactService = context.read<ContactService>();
       final registeredUsers = await contactService.matchContactsList(contactsData);
 
       final registeredPhones = <String, ContactModel>{};
@@ -166,7 +168,6 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
         registeredPhones[_canonicalPhone(phone)] = user;
       }
 
-      final isar = context.read<IsarService>();
       final allContacts = <ContactModel>[];
       for (var contact in selectedContacts) {
         final phone = _normalizePhone(contact.phones.first.number);
@@ -189,7 +190,7 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
 
       if (mounted) {
         CustomSnackBar.show(context, message: 'Added ${allContacts.length} contacts');
-        Navigator.pop(context, allContacts.length);
+        Navigator.of(context).pop(allContacts.length);
       }
     } catch (e) {
       developer.log('Sync selected error: $e');

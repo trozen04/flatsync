@@ -11,7 +11,6 @@ import '../../constants/app_text_styles.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/detail_dialog.dart';
 import '../../widgets/loading_indicator.dart';
-import '../../widgets/banner_ad_widget.dart';
 import '../../widgets/native_ad_widget.dart';
 import '../../bloc/contact_provider.dart';
 import '../../services/app_preferences_service.dart';

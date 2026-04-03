@@ -45,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _toggleNotifications(bool enabled) async {
     if (_notificationBusy) return;
+    final overlay = Overlay.of(context);
 
     setState(() => _notificationBusy = true);
     try {
@@ -57,8 +58,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await preferences.setNotificationPromptSeen(true);
         if (!mounted) return;
         setState(() => _notificationsEnabled = granted);
-        CustomSnackBar.show(
-          context,
+        CustomSnackBar.showOnOverlay(
+          overlay,
           message: granted
               ? 'Notifications enabled'
               : 'Notification permission not granted',
@@ -72,8 +73,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() => _notificationsEnabled = false);
 
-      CustomSnackBar.show(
-        context,
+      CustomSnackBar.showOnOverlay(
+        overlay,
         message: 'Notifications disabled',
       );
     } finally {
@@ -84,6 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _showCurrencyPicker(AppPreferencesService preferences) async {
     final searchController = TextEditingController();
     var query = '';
+    final overlay = Overlay.of(context);
 
     final selected = await showModalBottomSheet<String>(
       context: context,
@@ -155,7 +157,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       manuallySelected: true,
     );
     if (!mounted) return;
-    CustomSnackBar.show(context, message: 'Default currency updated');
+    CustomSnackBar.showOnOverlay(
+      overlay,
+      message: 'Default currency updated',
+    );
   }
 
   @override
@@ -179,6 +184,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _loading = true);
     try {
       final isar = context.read<IsarService>();
+      final auth = context.read<AuthService>();
       final local = await isar.getCurrentUserLocal();
       if (mounted && local != null) {
         _user = local;
@@ -186,7 +192,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _phoneController.text = local.phoneNumber ?? '';
       }
 
-      final remote = await context.read<AuthService>().getCurrentUser();
+      final remote = await auth.getCurrentUser();
       if (mounted && remote != null) {
         _user = remote;
         _nameController.text = remote.name ?? '';
@@ -249,8 +255,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<bool> _saveName(String name) async {
     if (_saving) return false;
+    final overlay = Overlay.of(context);
     if (name.isEmpty) {
-      CustomSnackBar.show(context, message: 'Name is required', isError: true);
+      CustomSnackBar.showOnOverlay(
+        overlay,
+        message: 'Name is required',
+        isError: true,
+      );
       return false;
     }
 
@@ -258,35 +269,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final nameUpdate = name == currentName ? null : name;
 
     if (nameUpdate == null) {
-      CustomSnackBar.show(context, message: 'No changes to save');
+      CustomSnackBar.showOnOverlay(
+        overlay,
+        message: 'No changes to save',
+      );
       return false;
     }
 
     setState(() => _saving = true);
     try {
       final auth = context.read<AuthService>();
-      final updated = await auth.updateMe(name: nameUpdate);
-      if (updated == null) {
-        CustomSnackBar.show(context,
-            message: 'Unable to update profile', isError: true);
-        return false;
-      }
-
       final isar = context.read<IsarService>();
       final local = await isar.getCurrentUserLocal();
+      final updated = await auth.updateMe(name: nameUpdate);
+      if (updated == null) {
+        CustomSnackBar.showOnOverlay(
+          overlay,
+          message: 'Unable to update profile',
+          isError: true,
+        );
+        return false;
+      }
       await isar.replaceCurrentUser(_mergeTokensIfPresent(local, updated));
 
       if (mounted) {
-        setState(() => _user = updated);
-        CustomSnackBar.show(context, message: 'Profile updated');
-        FocusScope.of(context).unfocus();
+        setState(() {
+          _user = updated;
+          _nameController.text = updated.name?.trim().isNotEmpty == true
+              ? updated.name!.trim()
+              : nameUpdate;
+        });
+        CustomSnackBar.showOnOverlay(overlay, message: 'Profile updated');
+        FocusManager.instance.primaryFocus?.unfocus();
       }
       return true;
     } catch (e) {
       developer.log('Profile save error: $e');
       if (mounted) {
-        CustomSnackBar.show(
-          context,
+        CustomSnackBar.showOnOverlay(
+          overlay,
           message: NetworkErrorHandler.message(
             e,
             fallback: 'Unable to update profile',
@@ -302,9 +323,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _toggleBiometric(bool enabled) async {
     if (_biometricBusy) return;
+    final overlay = Overlay.of(context);
     if (enabled && !_biometricAvailable) {
-      CustomSnackBar.show(
-        context,
+      CustomSnackBar.showOnOverlay(
+        overlay,
         message: 'Biometric authentication is not available on this device',
         isError: true,
       );
@@ -314,14 +336,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _biometricBusy = true);
     try {
       final preferences = context.read<AppPreferencesService>();
+      final biometric = context.read<BiometricAuthService>();
       if (enabled) {
-        final ok = await context.read<BiometricAuthService>().authenticate(
-              reason: 'Confirm biometric unlock for SplitEasy',
-            );
+        final ok = await biometric.authenticate(
+          reason: 'Confirm biometric unlock for SplitEasy',
+        );
         if (!ok) {
           if (mounted) {
-            CustomSnackBar.show(
-              context,
+            CustomSnackBar.showOnOverlay(
+              overlay,
               message: 'Biometric verification failed',
               isError: true,
             );
@@ -332,8 +355,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       await preferences.setBiometricEnabled(enabled);
       if (mounted) {
-        CustomSnackBar.show(
-          context,
+        CustomSnackBar.showOnOverlay(
+          overlay,
           message: enabled
               ? 'Biometric unlock enabled'
               : 'Biometric unlock disabled',
@@ -352,12 +375,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       useSafeArea: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (sheetContext) {
+        var saving = false;
         return Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
           ),
           child: StatefulBuilder(
-            builder: (sheetContext, _) {
+            builder: (sheetContext, setSheetState) {
               return Padding(
                 padding: AppDimensions.appMargin(sheetContext),
                 child: Column(
@@ -392,19 +416,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     AppDimensions.h20(sheetContext),
                     CustomButton(
                       text: 'Save changes',
+                      isLoading: saving,
                       onPressed: () async {
+                        final overlay = Overlay.of(sheetContext);
+                        final navigator = Navigator.of(sheetContext);
                         final name = nameController.text.trim();
                         if (name.isEmpty) {
-                          CustomSnackBar.show(
-                            sheetContext,
+                          CustomSnackBar.showOnOverlay(
+                            overlay,
                             message: 'Name is required',
                             isError: true,
                           );
                           return;
                         }
+                        setSheetState(() => saving = true);
                         final ok = await _saveName(name);
-                        if (ok && sheetContext.mounted) {
-                          Navigator.pop(sheetContext);
+                        if (sheetContext.mounted) {
+                          setSheetState(() => saving = false);
+                        }
+                        if (ok && mounted) {
+                          navigator.pop();
                         }
                       },
                     ),
@@ -416,15 +447,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
-  }
-
-  String _initials() {
-    final value = (_user?.name ?? '').trim();
-    if (value.isEmpty) return 'S';
-    final parts = value.split(RegExp(r'\s+'));
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
-        .toUpperCase();
   }
 
   Widget _groupCard(BuildContext context, List<Widget> children) {
@@ -538,9 +560,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        appBar: widget.showAppBar
-            ? const GradientAppBar(title: 'Profile')
-            : null,
+        appBar:
+            widget.showAppBar ? const GradientAppBar(title: 'Profile') : null,
         body: Padding(
           padding: AppDimensions.appMargin(context),
           child: _loading
@@ -559,7 +580,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     AppDimensions.h20(context),
                     const AppSectionHeader(
                       title: 'Preferences',
-                      subtitle: 'Security, currency, and notification controls.',
+                      subtitle:
+                          'Security, currency, and notification controls.',
                     ),
                     AppDimensions.h10(context),
                     _groupCard(
@@ -637,9 +659,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ],
                 ),
-              ),
         ),
-      );
+      ),
+    );
   }
 }
 

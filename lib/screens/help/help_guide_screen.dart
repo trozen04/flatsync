@@ -27,9 +27,14 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
   }
 
   Future<void> _openExternal(BuildContext context, Uri uri) async {
+    final overlay = Overlay.of(context);
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && context.mounted) {
-      CustomSnackBar.show(context, message: 'Could not open link', isError: true);
+    if (!ok && mounted) {
+      CustomSnackBar.showOnOverlay(
+        overlay,
+        message: 'Could not open link',
+        isError: true,
+      );
     }
   }
 
@@ -63,7 +68,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                       icon: Icons.verified_rounded,
                       label: 'Version $fullVersion',
                     ),
-                    HelpBadge(
+                    const HelpBadge(
                       icon: Icons.code_rounded,
                       label: 'Developed by ${AppInfo.developer}',
                     ),
@@ -96,7 +101,6 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                   ],
                 ),
                 AppDimensions.h20(context),
-
                 const HelpBulletCard(
                   title: 'How to use',
                   bullets: [
@@ -152,7 +156,8 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                   ),
                 ),
                 AppDimensions.h20(context),
-                Text('Need help fast?', style: AppTextStyles.titleMedium(context)),
+                Text('Need help fast?',
+                    style: AppTextStyles.titleMedium(context)),
                 AppDimensions.h10(context),
                 AppCard(
                   type: AppCardType.outlined,

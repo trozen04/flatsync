@@ -70,15 +70,18 @@ class _BiometricGateScreenState extends State<BiometricGateScreen> {
 
   Future<void> _logout() async {
     final isar = context.read<IsarService>();
+    final notificationService = context.read<NotificationService>();
+    final preferences = context.read<AppPreferencesService>();
+    final auth = context.read<AuthService>();
+    final navigator = Navigator.of(context);
     await isar.isar.writeTxn(() async {
       await isar.isar.clear();
     });
-    await context.read<NotificationService>().unregisterDevice();
-    await context.read<AppPreferencesService>().resetForLogout();
-    await context.read<AuthService>().logout();
+    await notificationService.unregisterDevice();
+    await preferences.resetForLogout();
+    await auth.logout();
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
+    navigator.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
     );

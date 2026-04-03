@@ -221,6 +221,7 @@ class ExpenseService {
                 transactionId: (e['transactionId'] as String?) ?? '',
                 fromUserId: (e['fromUserId'] as String?) ?? '',
                 toUserId: (e['toUserId'] as String?) ?? '',
+                toPhone: (e['toPhone'] as String?)?.trim(),
                 amount: (e['amount'] as num?)?.toInt() ?? 0,
                 createdAt:
                     DateTime.tryParse((e['createdAt'] as String?) ?? '') ??
@@ -879,6 +880,7 @@ class ExpenseService {
     }
 
     final expenses = await getExpenses(forceRefresh: forceRefresh);
+    final transactions = await getTransactions(forceRefresh: forceRefresh);
     final timeline = <Map<String, dynamic>>[];
 
     for (final expense in expenses) {
@@ -900,6 +902,19 @@ class ExpenseService {
         'direction': direction,
         'description': expense.description ?? 'Expense',
         'createdAt': expense.createdAt.toUtc().toIso8601String(),
+      });
+    }
+
+    for (final tx in transactions) {
+      if (_canonicalPhone(tx.toPhone ?? '') != target) continue;
+
+      timeline.add({
+        'type': 'transaction',
+        'amount': tx.amount,
+        'signedAmount': tx.amount,
+        'direction': 'sent',
+        'description': 'Sent payment',
+        'createdAt': tx.createdAt.toUtc().toIso8601String(),
       });
     }
 
@@ -932,7 +947,9 @@ class ExpenseService {
 
     for (final tx in transactions) {
       final sentByMe = currentUserId != null && tx.fromUserId == currentUserId;
-      final counterparty = sentByMe ? tx.toUserId : tx.fromUserId;
+      final counterparty = sentByMe
+          ? (tx.toUserId.isNotEmpty ? tx.toUserId : (tx.toPhone ?? ''))
+          : tx.fromUserId;
       history.add({
         'type': 'transaction',
         'description': sentByMe ? 'Sent payment' : 'Received payment',

@@ -17,7 +17,7 @@ class PrivacyScreen extends StatelessWidget {
             bottom: AppDimensions.height(context) * 0.08,
           ),
           children: [
-            HelpHeroCard(
+            const HelpHeroCard(
               icon: Icons.privacy_tip_rounded,
               title: 'How SplitEasy handles your data',
               subtitle:
@@ -83,4 +83,3 @@ class PrivacyScreen extends StatelessWidget {
     );
   }
 }
-

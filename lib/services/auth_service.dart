@@ -194,6 +194,7 @@ class AuthService {
     await _storage.write(key: 'refresh_token', value: user.refreshToken);
     await _storage.write(key: 'user_id', value: user.userId);
     await _storage.write(key: 'hashed_pin', value: user.hashedPin);
+    _api.resetSessionInvalidationState();
 
     developer.log(
         'AuthService: verifySignupOtp success (userId: ${user.userId})',
@@ -231,6 +232,7 @@ class AuthService {
     await _storage.write(key: 'refresh_token', value: user.refreshToken);
     await _storage.write(key: 'user_id', value: user.userId);
     await _storage.write(key: 'hashed_pin', value: user.hashedPin);
+    _api.resetSessionInvalidationState();
 
     return user;
   }
@@ -286,6 +288,7 @@ class AuthService {
   Future<void> logout() async {
     await _storage.deleteAll();
     _api.clearToken();
+    _api.resetSessionInvalidationState();
   }
 
   Future<void> syncContactsOnLogin({

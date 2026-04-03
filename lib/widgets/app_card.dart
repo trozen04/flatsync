@@ -78,7 +78,7 @@ class AppCard extends StatelessWidget {
         );
       case AppCardType.filled:
         return BoxDecoration(
-          color: backgroundColor ?? Theme.of(context).colorScheme.surfaceVariant,
+          color: backgroundColor ?? Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: borderRadius,
           border: Border.all(color: AppColors.borderLight, width: 1.0),
           boxShadow: AppShadows.subtle,

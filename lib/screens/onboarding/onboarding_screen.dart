@@ -115,7 +115,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               right: -size.width * 0.22,
               child: _BlurOrb(
                 size: size.width * 0.72,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             ),
             Positioned(
@@ -184,7 +184,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             decoration: BoxDecoration(
                               color: index == _currentPage
                                   ? page.activeDotColor
-                                  : Colors.white.withOpacity(0.6),
+                                  : Colors.white.withValues(alpha: 0.6),
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -202,9 +202,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             backgroundColor: page.buttonBackground,
                             foregroundColor: page.buttonForeground,
                             disabledBackgroundColor:
-                                page.buttonBackground.withOpacity(0.7),
+                                page.buttonBackground.withValues(alpha: 0.7),
                             disabledForegroundColor:
-                                page.buttonForeground.withOpacity(0.9),
+                                page.buttonForeground.withValues(alpha: 0.9),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(28),
                             ),
@@ -316,7 +316,7 @@ class _BrandHeader extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFF7BE0C3).withOpacity(0.38),
+            color: const Color(0xFF7BE0C3).withValues(alpha: 0.38),
           ),
           child: Stack(
             alignment: Alignment.center,
@@ -371,7 +371,7 @@ class _BlurOrb extends StatelessWidget {
           gradient: RadialGradient(
             colors: [
               color,
-              color.withOpacity(0.2),
+              color.withValues(alpha: 0.2),
               Colors.transparent,
             ],
           ),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../constants/app_dimensions.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/app_shell_navigation.dart';
 import '../../widgets/gradient_app_bar.dart';
@@ -97,18 +96,21 @@ class _AppShellState extends State<AppShell> {
 
       // Clear Isar database
       final isar = context.read<IsarService>();
+      final notificationService = context.read<NotificationService>();
+      final preferences = context.read<AppPreferencesService>();
+      final auth = context.read<AuthService>();
+      final navigator = Navigator.of(context);
       await isar.isar.writeTxn(() async {
         await isar.isar.clear();
       });
 
       // Logout from auth service
-      await context.read<NotificationService>().unregisterDevice();
-      await context.read<AppPreferencesService>().resetForLogout();
-      await context.read<AuthService>().logout();
+      await notificationService.unregisterDevice();
+      await preferences.resetForLogout();
+      await auth.logout();
 
       if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
+        navigator.pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
           (route) => false,
         );

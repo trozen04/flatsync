@@ -14,11 +14,15 @@ import 'package:flatsync/services/notification_service.dart';
 import 'package:flatsync/services/interstitial_ad_service.dart';
 import 'package:flatsync/bloc/contact_provider.dart';
 import 'package:flatsync/screens/splash/splash_screen.dart';
+import 'package:flatsync/screens/auth/login_screen.dart';
 import 'package:flatsync/constants/app_theme.dart';
 import 'package:flatsync/routes/app_routes.dart';
+import 'package:flatsync/widgets/app_dialog.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+final FlutterLocalNotificationsPlugin _localNotifications =
+    FlutterLocalNotificationsPlugin();
+final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 // Background message handler — must be top-level
 @pragma('vm:entry-point')
@@ -41,7 +45,8 @@ Future<void> _initLocalNotifications() async {
     importance: Importance.high,
   );
   await _localNotifications
-      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 }
 
@@ -63,6 +68,16 @@ void _showLocalNotification(RemoteMessage message) {
       ),
       iOS: DarwinNotificationDetails(),
     ),
+  );
+}
+
+Future<void> _showSessionInvalidatedPopup(
+  NavigatorState navigator,
+  String message,
+) {
+  return AppSessionExpiredDialog.show(
+    navigator.context,
+    message: message,
   );
 }
 
@@ -101,9 +116,23 @@ Future<void> main() async {
   final interstitialAdService = InterstitialAdService();
 
   await notificationService.preloadToken();
-  if (appPreferencesService.notificationsEnabled && await authService.isLoggedIn()) {
+  if (appPreferencesService.notificationsEnabled &&
+      await authService.isLoggedIn()) {
     await notificationService.syncTokenToServer();
   }
+
+  apiService.sessionInvalidated.listen((message) async {
+    final navigator = _rootNavigatorKey.currentState;
+    if (navigator == null) return;
+    await _showSessionInvalidatedPopup(navigator, message);
+
+    await authService.logout();
+
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  });
 
   runApp(
     MultiProvider(
@@ -133,6 +162,7 @@ class FlatSyncApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SplitEasy',
+      navigatorKey: _rootNavigatorKey,
       theme: AppTheme.lightTheme,
       themeMode: ThemeMode.light,
       routes: AppRoutes.routes,
@@ -140,4 +170,3 @@ class FlatSyncApp extends StatelessWidget {
     );
   }
 }
-

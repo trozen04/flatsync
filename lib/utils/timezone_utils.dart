@@ -43,7 +43,7 @@ class TimezoneUtils {
       '32': 'Europe/Brussels', // Belgium
       '353': 'Europe/Dublin', // Ireland
       '30': 'Europe/Athens', // Greece
-      '36': 'Europe/Budapest', // Hungary
+      '36': 'Asia/Bangkok', // Thailand
       '48': 'Europe/Warsaw', // Poland
       '55': 'America/Sao_Paulo', // Brazil
       '52': 'America/Mexico_City', // Mexico
@@ -55,7 +55,7 @@ class TimezoneUtils {
       '20': 'Africa/Cairo', // Egypt
       '966': 'Asia/Riyadh', // Saudi Arabia
       '971': 'Asia/Dubai', // UAE
-      '36': 'Asia/Bangkok', // Thailand
+      '66': 'Asia/Bangkok', // Thailand
       '62': 'Asia/Jakarta', // Indonesia
       '60': 'Asia/Kuala_Lumpur', // Malaysia
       '65': 'Asia/Singapore', // Singapore
@@ -73,12 +73,8 @@ class TimezoneUtils {
   static DateTime convertToUserTimezone(DateTime utcDateTime, String? phoneNumber) {
     try {
       final location = getTimezoneFromPhone(phoneNumber);
-      // Assume utcDateTime is in UTC
-      final utcTime = tz.TZDateTime.from(utcDateTime, tz.UTC);
-      final convertedTime = utcTime.toLocal();
       // Create a new TZDateTime in the user's timezone
-      final userTime = tz.TZDateTime(location, utcDateTime.year, utcDateTime.month,
-          utcDateTime.day, utcDateTime.hour, utcDateTime.minute, utcDateTime.second);
+      final userTime = tz.TZDateTime.from(utcDateTime, location);
       return DateTime(userTime.year, userTime.month, userTime.day, userTime.hour,
           userTime.minute, userTime.second);
     } catch (e) {

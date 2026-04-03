@@ -80,7 +80,7 @@ class ExpenseModel {
     // `participants` as a count or another unexpected shape.
     final raw = json['participants'];
     final rawParticipants = (raw is List) ? raw : const [];
-    final normalizedParticipants = (rawParticipants ?? [])
+    final normalizedParticipants = rawParticipants
         .map((e) {
           if (e is String) return e;
           if (e is Map<String, dynamic>) {
