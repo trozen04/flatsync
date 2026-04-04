@@ -33,7 +33,7 @@ android {
         applicationId = "com.trozen.flatsync"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
-        versionCode = 10
+        versionCode = 12
         versionName = "1.0.0"
     }
 
