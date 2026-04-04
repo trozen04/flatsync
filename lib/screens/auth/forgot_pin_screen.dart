@@ -251,8 +251,9 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                     text: !_isOtpBypassed && _countdown > 0
                         ? 'Wait $_countdown seconds'
                         : 'Send Reset Code',
-                    onPressed: _sendOtp,
+                    onPressed: (!_isOtpBypassed && _countdown > 0) ? null : _sendOtp,
                     isLoading: _loading,
+                    isDisabled: !_isOtpBypassed && _countdown > 0,
                   ),
                 ),
                 if (_otpSent) ...[
@@ -304,4 +305,3 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
     );
   }
 }
-

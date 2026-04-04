@@ -222,8 +222,11 @@ class _SignupScreenState extends State<SignupScreen> {
                             text: !_isOtpBypassed && _countdown > 0
                                 ? 'Wait $_countdown seconds'
                                 : 'Send Code',
-                            onPressed: _sendOtp,
+                            onPressed: (!_isOtpBypassed && _countdown > 0)
+                                ? null
+                                : _sendOtp,
                             isLoading: _loading,
+                            isDisabled: !_isOtpBypassed && _countdown > 0,
                           ),
                         ),
                         AppDimensions.h10(context),
