@@ -31,6 +31,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _pinController = TextEditingController();
   bool _loading = false;
   bool _obscurePin = true;
+  DateTime? _lastLoginAttempt;
+  static const _cooldown = Duration(seconds: 30);
 
   Future<void> _login() async {
     if (_phoneNumber.isEmpty || _pinController.text.isEmpty) {
@@ -38,6 +40,18 @@ class _LoginScreenState extends State<LoginScreen> {
           message: 'Enter phone and PIN', isError: true);
       return;
     }
+
+    final now = DateTime.now();
+    if (_lastLoginAttempt != null &&
+        now.difference(_lastLoginAttempt!) < _cooldown) {
+      final remaining =
+          _cooldown.inSeconds - now.difference(_lastLoginAttempt!).inSeconds;
+      CustomSnackBar.show(context,
+          message: 'Please wait $remaining seconds before trying again',
+          isError: true);
+      return;
+    }
+    _lastLoginAttempt = now;
 
     setState(() => _loading = true);
 
