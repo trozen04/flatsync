@@ -215,7 +215,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       for (final contact in unresolved) {
         final resolved =
             await contactService.addContactByPhone(contact.phoneNumber!);
-        if (resolved != null && resolved.isRegistered) {
+        if (resolved != null &&
+            (resolved.contactId?.isNotEmpty ?? false)) {
           contact.contactId = resolved.contactId;
           contact.isRegistered = resolved.isRegistered;
           contact.name =

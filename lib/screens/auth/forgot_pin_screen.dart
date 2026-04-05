@@ -25,7 +25,6 @@ class ForgotPinScreen extends StatefulWidget {
 
 class _ForgotPinScreenState extends State<ForgotPinScreen> {
   static const int _otpCooldownSeconds = 120;
-  static const String _otpBypassPhone = '8887692942';
 
   String _phoneNumber = '';
   final _otpController = TextEditingController();
@@ -55,16 +54,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
     return digits.substring(digits.length - 10);
   }
 
-  bool get _isOtpBypassed => _canonicalPhone(_phoneNumber) == _otpBypassPhone;
-
   void _syncCountdown() {
-    if (_isOtpBypassed) {
-      if (_countdown != 0) {
-        setState(() => _countdown = 0);
-      }
-      return;
-    }
-
     final lastRequest = ForgotPinScreen._lastOtpRequest;
     final currentPhone = _canonicalPhone(_phoneNumber);
     if (lastRequest == null ||
@@ -99,7 +89,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
         _countdownActive = false;
         return false;
       }
-      if (_isOtpBypassed || _countdown <= 1) {
+      if (_countdown <= 1) {
         setState(() => _countdown = 0);
         _countdownActive = false;
         return false;
@@ -115,7 +105,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
           message: 'Enter phone number', isError: true);
       return;
     }
-    if (!_isOtpBypassed && _countdown > 0) {
+    if (_countdown > 0) {
       CustomSnackBar.show(context,
           message: 'Please wait $_countdown seconds', isError: true);
       return;
@@ -126,22 +116,13 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
       final authService = context.read<AuthService>();
       final response = await authService.sendResetPinOtp(_phoneNumber);
       final deliveryLabel = authService.describeOtpDestination(response);
-      if (_isOtpBypassed) {
-        ForgotPinScreen._lastOtpRequest = null;
-        ForgotPinScreen._lastOtpPhone = null;
-        setState(() {
-          _otpSent = true;
-          _countdown = 0;
-        });
-      } else {
-        ForgotPinScreen._lastOtpRequest = DateTime.now();
-        ForgotPinScreen._lastOtpPhone = _canonicalPhone(_phoneNumber);
-        setState(() {
-          _otpSent = true;
-          _countdown = _otpCooldownSeconds;
-        });
-        _startCountdown();
-      }
+      ForgotPinScreen._lastOtpRequest = DateTime.now();
+      ForgotPinScreen._lastOtpPhone = _canonicalPhone(_phoneNumber);
+      setState(() {
+        _otpSent = true;
+        _countdown = _otpCooldownSeconds;
+      });
+      _startCountdown();
       if (mounted) {
         CustomSnackBar.show(context,
             message: 'Code sent. Check your $deliveryLabel.');
@@ -154,7 +135,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
             .getAuthErrorMessage(e, flow: AuthFlow.sendResetPinOtp);
         final isTooManyRequests =
             e is DioException && e.response?.statusCode == 429;
-        if (isTooManyRequests && !_isOtpBypassed) {
+        if (isTooManyRequests) {
           ForgotPinScreen._lastOtpRequest = DateTime.now();
           ForgotPinScreen._lastOtpPhone = _canonicalPhone(_phoneNumber);
           setState(() => _countdown = _otpCooldownSeconds);
@@ -248,12 +229,12 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: CustomButton(
-                    text: !_isOtpBypassed && _countdown > 0
+                    text: _countdown > 0
                         ? 'Wait $_countdown seconds'
                         : 'Send Reset Code',
-                    onPressed: (!_isOtpBypassed && _countdown > 0) ? null : _sendOtp,
+                    onPressed: _countdown > 0 ? null : _sendOtp,
                     isLoading: _loading,
-                    isDisabled: !_isOtpBypassed && _countdown > 0,
+                    isDisabled: _countdown > 0,
                   ),
                 ),
                 if (_otpSent) ...[

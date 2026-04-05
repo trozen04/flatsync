@@ -26,7 +26,6 @@ class SignupScreen extends StatefulWidget {
 
 class _SignupScreenState extends State<SignupScreen> {
   static const int _otpCooldownSeconds = 120;
-  static const String _otpBypassPhone = '8887692942';
 
   String _phoneNumber = '';
   bool _loading = false;
@@ -41,16 +40,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   String _canonicalPhone(String phone) => PhoneUtils.canonical(phone);
 
-  bool get _isOtpBypassed => _canonicalPhone(_phoneNumber) == _otpBypassPhone;
-
   void _syncCountdown() {
-    if (_isOtpBypassed) {
-      if (_countdown != 0) {
-        setState(() => _countdown = 0);
-      }
-      return;
-    }
-
     final lastRequest = SignupScreen._lastOtpRequest;
     final currentPhone = _canonicalPhone(_phoneNumber);
     if (lastRequest == null ||
@@ -85,7 +75,7 @@ class _SignupScreenState extends State<SignupScreen> {
         _countdownActive = false;
         return false;
       }
-      if (_isOtpBypassed || _countdown <= 1) {
+      if (_countdown <= 1) {
         setState(() => _countdown = 0);
         _countdownActive = false;
         return false;
@@ -101,7 +91,7 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    if (!_isOtpBypassed && _countdown > 0) {
+    if (_countdown > 0) {
       CustomSnackBar.show(context, message: 'Please wait $_countdown seconds', isError: true);
       return;
     }
@@ -115,16 +105,10 @@ class _SignupScreenState extends State<SignupScreen> {
       developer.log('SignupScreen: sendOtp response: $response', name: 'SignupScreen');
       final deliveryLabel = authService.describeOtpDestination(response);
 
-      if (_isOtpBypassed) {
-        SignupScreen._lastOtpRequest = null;
-        SignupScreen._lastOtpPhone = null;
-        setState(() => _countdown = 0);
-      } else {
-        SignupScreen._lastOtpRequest = DateTime.now();
-        SignupScreen._lastOtpPhone = _canonicalPhone(_phoneNumber);
-        setState(() => _countdown = _otpCooldownSeconds);
-        _startCountdown();
-      }
+      SignupScreen._lastOtpRequest = DateTime.now();
+      SignupScreen._lastOtpPhone = _canonicalPhone(_phoneNumber);
+      setState(() => _countdown = _otpCooldownSeconds);
+      _startCountdown();
 
       if (mounted) {
         Navigator.push(
@@ -146,7 +130,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
         final isTooManyRequests =
             e is DioException && e.response?.statusCode == 429;
-        if (isTooManyRequests && !_isOtpBypassed) {
+        if (isTooManyRequests) {
           SignupScreen._lastOtpRequest = DateTime.now();
           SignupScreen._lastOtpPhone = _canonicalPhone(_phoneNumber);
           setState(() => _countdown = _otpCooldownSeconds);
@@ -219,14 +203,10 @@ class _SignupScreenState extends State<SignupScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: CustomButton(
-                            text: !_isOtpBypassed && _countdown > 0
-                                ? 'Wait $_countdown seconds'
-                                : 'Send Code',
-                            onPressed: (!_isOtpBypassed && _countdown > 0)
-                                ? null
-                                : _sendOtp,
+                            text: _countdown > 0 ? 'Wait $_countdown seconds' : 'Send Code',
+                            onPressed: _countdown > 0 ? null : _sendOtp,
                             isLoading: _loading,
-                            isDisabled: !_isOtpBypassed && _countdown > 0,
+                            isDisabled: _countdown > 0,
                           ),
                         ),
                         AppDimensions.h10(context),
