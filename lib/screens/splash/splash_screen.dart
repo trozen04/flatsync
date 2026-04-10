@@ -102,14 +102,13 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: FadeTransition(
         opacity: _fadeAnim,
         child: Center(
           child: Image.asset(
             ImageAssets.appIcon,
             width: AppDimensions.width(context) * 0.5,
-            // height: 110,
           ),
         ),
       ),

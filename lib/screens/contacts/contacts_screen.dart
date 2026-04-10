@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
-import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
 
 import '../../constants/app_dimensions.dart';
@@ -11,6 +10,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_text_styles.dart';
 import '../../services/app_preferences_service.dart';
 import '../../widgets/app_card.dart';
+import '../../widgets/app_dialog.dart';
 import '../../widgets/app_page_sections.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/loading_indicator.dart';
@@ -215,8 +215,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       for (final contact in unresolved) {
         final resolved =
             await contactService.addContactByPhone(contact.phoneNumber!);
-        if (resolved != null &&
-            (resolved.contactId?.isNotEmpty ?? false)) {
+        if (resolved != null && (resolved.contactId?.isNotEmpty ?? false)) {
           contact.contactId = resolved.contactId;
           contact.isRegistered = resolved.isRegistered;
           contact.name =
@@ -325,60 +324,38 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
+  Widget _buildContactActions() {
+    return Row(
+      children: [
+        Expanded(
+          child: CustomButton(
+            text: 'Select contacts',
+            icon: Icons.contacts_rounded,
+            height: 44,
+            onPressed: _openContactSelection,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: CustomButton(
+            text: 'Add by phone',
+            icon: Icons.person_add_alt_1_rounded,
+            height: 44,
+            isOutlined: true,
+            textColor: AppColors.primary,
+            onPressed: _addManualContact,
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _addManualContact() async {
-    final nameController = TextEditingController();
-    String phoneNumber = '';
     final overlay = Overlay.of(context);
     final contactService = context.read<ContactService>();
     final isar = context.read<IsarService>();
 
-    final result = await showDialog<Map<String, String>?>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Contact'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                    labelText: 'Name', hintText: 'John Doe'),
-              ),
-              const SizedBox(height: 16),
-              IntlPhoneField(
-                initialCountryCode: 'IN',
-                disableLengthCheck: true,
-                decoration: const InputDecoration(
-                  labelText: 'Phone Number',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (phone) {
-                  setDialogState(() {
-                    phoneNumber = phone.completeNumber;
-                  });
-                },
-              ),
-            ],
-          ),
-          actions: [
-            CustomButton(
-              text: 'Cancel',
-              onPressed: () => Navigator.pop(context),
-              isOutlined: true,
-            ),
-            CustomButton(
-              text: 'Add',
-              onPressed: () {
-                if (nameController.text.isEmpty || phoneNumber.isEmpty) return;
-                Navigator.pop(context,
-                    {'name': nameController.text, 'phone': phoneNumber});
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    final result = await AppManualContactDialog.show(context);
 
     if (result == null) return;
 
@@ -440,7 +417,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     Widget buildEmptyState({
       required String title,
       required String message,
-      required bool showActions,
     }) {
       return RefreshIndicator(
         onRefresh: () => _refreshData(forceRefresh: true),
@@ -456,25 +432,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   : Icons.contacts_outlined,
               title: title,
               message: message,
-              action: showActions
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CustomButton(
-                          text: 'Select from Contacts',
-                          icon: Icons.contacts,
-                          onPressed: _openContactSelection,
-                        ),
-                        AppDimensions.h10(context),
-                        CustomButton(
-                          text: 'Add by Phone Number',
-                          icon: Icons.person_add,
-                          onPressed: _addManualContact,
-                          isOutlined: true,
-                        ),
-                      ],
-                    )
-                  : null,
             ),
           ],
         ),
@@ -533,20 +490,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ],
               ),
               AppDimensions.h20(context),
-              AppSectionHeader(
+              const AppSectionHeader(
                 title: 'People',
                 subtitle:
                     'Each card shows the current balance and quick status.',
-                action: TextButton.icon(
-                  onPressed: _openContactSelection,
-                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                  label: const Text('Add contact'),
-                  style: TextButton.styleFrom(
-                      padding: AppDimensions.buttonMargin(context),
-                      visualDensity: VisualDensity.compact,
-                      shadowColor: Colors.black),
-                ),
               ),
+              AppDimensions.h10(context),
+              _buildContactActions(),
               AppDimensions.h10(context),
               Expanded(
                 child: _contacts.isEmpty
@@ -557,7 +507,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         message: hasSearch
                             ? 'Try a different name or phone number.'
                             : 'Sync device contacts or add someone by phone to start splitting bills.',
-                        showActions: !hasSearch,
                       )
                     : RefreshIndicator(
                         onRefresh: () => _refreshData(forceRefresh: true),
@@ -679,7 +628,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                         ),
                                         const SizedBox(height: 3),
                                         Text(
-                                          contact.phoneNumber ?? '',
+                                          PhoneUtils.display(
+                                              contact.phoneNumber),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style:
@@ -692,7 +642,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   const SizedBox(width: 10),
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
-                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       FittedBox(
                                         fit: BoxFit.scaleDown,

@@ -62,7 +62,12 @@ class AppCard extends StatelessWidget {
         return BoxDecoration(
           color: backgroundColor ?? surface,
           borderRadius: borderRadius,
-          border: Border.all(color: AppColors.borderLight, width: 1.0),
+          border: Border.all(
+            color: (backgroundColor != null && backgroundColor != surface)
+                ? backgroundColor!.withValues(alpha: 0.25)
+                : AppColors.borderLight,
+            width: 1.0,
+          ),
           boxShadow: shadowColor != null
               ? AppShadows.colored(shadowColor!)
               : AppShadows.card,

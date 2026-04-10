@@ -367,8 +367,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                        RegExp(r'^\d{0,6}(\.\d{0,2})?')),
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      final text = newValue.text;
+                      if (text.isEmpty) return newValue;
+                      // Allow only digits and a single dot with max 2 decimal places and 6 integer digits
+                      final regex = RegExp(r'^\d{0,6}(\.\d{0,2})?$');
+                      return regex.hasMatch(text) ? newValue : oldValue;
+                    }),
                   ],
                   onChanged: (_) => setState(() {}),
                   style: AppTextStyles.currencyLarge(context),

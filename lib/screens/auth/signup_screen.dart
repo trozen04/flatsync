@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:dio/dio.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +9,7 @@ import '../../widgets/custom_button.dart';
 import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/form_validation.dart';
 import '../../utils/phone_utils.dart';
 import '../../widgets/gradient_app_bar.dart';
 import 'otp_verify_screen.dart';
@@ -86,23 +86,27 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _sendOtp() async {
-    if (_phoneNumber.isEmpty) {
-      CustomSnackBar.show(context, message: 'Enter phone number', isError: true);
+    final phoneError = AppFormValidation.validatePhoneDigits(_phoneNumber);
+    if (phoneError != null) {
+      CustomSnackBar.show(context, message: phoneError, isError: true);
       return;
     }
 
     if (_countdown > 0) {
-      CustomSnackBar.show(context, message: 'Please wait $_countdown seconds', isError: true);
+      CustomSnackBar.show(context,
+          message: 'Please wait $_countdown seconds', isError: true);
       return;
     }
 
     setState(() => _loading = true);
 
     try {
-      developer.log('SignupScreen: sendOtp request ($_phoneNumber)', name: 'SignupScreen');
+      developer.log('SignupScreen: sendOtp request ($_phoneNumber)',
+          name: 'SignupScreen');
       final authService = context.read<AuthService>();
       final response = await authService.sendSignupOtp(_phoneNumber);
-      developer.log('SignupScreen: sendOtp response: $response', name: 'SignupScreen');
+      developer.log('SignupScreen: sendOtp response: $response',
+          name: 'SignupScreen');
       final deliveryLabel = authService.describeOtpDestination(response);
 
       SignupScreen._lastOtpRequest = DateTime.now();
@@ -166,7 +170,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         Image.asset(
                           ImageAssets.nameIcon,
                           fit: BoxFit.cover,
-                          height: AppDimensions.height(context) * 0.07 ,
+                          height: AppDimensions.height(context) * 0.07,
                         ),
                         AppDimensions.h50(context),
                         IntlPhoneField(
@@ -176,26 +180,29 @@ class _SignupScreenState extends State<SignupScreen> {
                             labelText: 'Phone Number',
                             border: OutlineInputBorder(),
                           ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(15),
-                          ],
+                          keyboardType: TextInputType.phone,
+                          inputFormatters:
+                              AppFormValidation.phoneInputFormatters(),
                           onCountryChanged: (country) {
+                            setState(() => _phoneNumber = '');
                             context
                                 .read<AppPreferencesService>()
                                 .autoSetCurrencyFromCountry(country.code);
                           },
                           onChanged: (phone) {
-                            final digits =
-                                phone.number.replaceAll(RegExp(r'[^0-9]'), '');
+                            bool valid;
+                            try {
+                              valid = phone.isValidNumber();
+                            } catch (_) {
+                              valid = false;
+                            }
                             setState(() {
-                              _phoneNumber = digits.length >= 6 && digits.length <= 15
-                                  ? phone.completeNumber
-                                  : '';
+                              _phoneNumber = valid ? phone.completeNumber : '';
                             });
                             context
                                 .read<AppPreferencesService>()
-                                .autoSetCurrencyFromCountry(phone.countryISOCode);
+                                .autoSetCurrencyFromCountry(
+                                    phone.countryISOCode);
                             _syncCountdown();
                           },
                         ),
@@ -203,10 +210,12 @@ class _SignupScreenState extends State<SignupScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: CustomButton(
-                            text: _countdown > 0 ? 'Wait $_countdown seconds' : 'Send Code',
-                            onPressed: _countdown > 0 ? null : _sendOtp,
+                            text: _countdown > 0
+                                ? 'Wait $_countdown seconds'
+                                : 'Send Code',
+                            onPressed: (_countdown > 0 || _phoneNumber.isEmpty) ? null : _sendOtp,
                             isLoading: _loading,
-                            isDisabled: _countdown > 0,
+                            isDisabled: _countdown > 0 || _phoneNumber.isEmpty,
                           ),
                         ),
                         AppDimensions.h10(context),

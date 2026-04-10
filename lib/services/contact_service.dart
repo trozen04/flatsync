@@ -11,7 +11,8 @@ import 'api_service.dart';
 
 class ContactService {
   final ApiService _api;
-  final StreamController<int> _updatesController = StreamController<int>.broadcast();
+  final StreamController<int> _updatesController =
+      StreamController<int>.broadcast();
   int _revision = 0;
   DateTime? _lookupBackoffUntil;
   DateTime? _autoSyncBackoffUntil;
@@ -19,7 +20,8 @@ class ContactService {
 
   ContactService(this._api);
 
-  void _logResponseUser(String source, Map<String, dynamic> user, {int? index}) {
+  void _logResponseUser(String source, Map<String, dynamic> user,
+      {int? index}) {
     final id = user['_id'] ?? user['id'];
     final phone = user['phoneNumber'];
     final name = user['name'];
@@ -40,10 +42,12 @@ class ContactService {
     _updatesController.close();
   }
 
-  Future<void> autoSyncFromBalances(Map<String, dynamic> balances, IsarService isar) async {
+  Future<void> autoSyncFromBalances(
+      Map<String, dynamic> balances, IsarService isar) async {
     if (balances.isEmpty) return;
     final now = DateTime.now();
-    if (_autoSyncBackoffUntil != null && now.isBefore(_autoSyncBackoffUntil!)) return;
+    if (_autoSyncBackoffUntil != null && now.isBefore(_autoSyncBackoffUntil!))
+      return;
     if (_lastAutoSyncAt != null &&
         now.difference(_lastAutoSyncAt!) < const Duration(seconds: 20)) {
       return;
@@ -54,11 +58,11 @@ class ContactService {
       // Get balance response which already contains user info
       final response = await _api.get(ApiConfig.balances);
       final data = response.data['data'];
-      
+
       if (data is! Map<String, dynamic>) return;
-      
+
       final contacts = <ContactModel>[];
-      
+
       // Extract from owesMe
       final owesMe = (data['owesMe'] as List?) ?? [];
       for (var i = 0; i < owesMe.length; i++) {
@@ -74,7 +78,7 @@ class ContactService {
           }
         }
       }
-      
+
       // Extract from iOwe
       final iOwe = (data['iOwe'] as List?) ?? [];
       for (var i = 0; i < iOwe.length; i++) {
@@ -115,12 +119,14 @@ class ContactService {
     return status.isGranted;
   }
 
-  String _normalizePhone(String phone) => PhoneUtils.normalize(phone);
+  String _normalizePhone(String phone) => PhoneUtils.normalizeRaw(phone);
   String _canonicalPhone(String phone) => PhoneUtils.canonical(phone);
-  bool _looksLikePhoneName(String? value) => PhoneUtils.looksLikePhoneName(value);
+  bool _looksLikePhoneName(String? value) =>
+      PhoneUtils.looksLikePhoneName(value);
 
   bool get canAttemptLookup =>
-      _lookupBackoffUntil == null || DateTime.now().isAfter(_lookupBackoffUntil!);
+      _lookupBackoffUntil == null ||
+      DateTime.now().isAfter(_lookupBackoffUntil!);
 
   void _setLookupBackoff([Duration duration = const Duration(seconds: 45)]) {
     _lookupBackoffUntil = DateTime.now().add(duration);
@@ -136,11 +142,9 @@ class ContactService {
   ContactModel _mergeContact(ContactModel existing, ContactModel incoming) {
     final existingNameGood = !_looksLikePhoneName(existing.name);
     final incomingNameGood = !_looksLikePhoneName(incoming.name);
-
-    // Use incoming.isRegistered if it came from a fresh API response (has contactId),
-    // otherwise keep the existing value to avoid stale overrides.
     final incomingHasFreshData = incoming.contactId?.isNotEmpty ?? false;
-    final mergedIsRegistered = incomingHasFreshData ? incoming.isRegistered : existing.isRegistered;
+    final mergedIsRegistered =
+        incomingHasFreshData ? incoming.isRegistered : existing.isRegistered;
 
     developer.log(
       '_mergeContact: phone=${_canonicalPhone(incoming.phoneNumber ?? existing.phoneNumber ?? '')} '
@@ -148,31 +152,49 @@ class ContactService {
       'incomingHasFreshData=$incomingHasFreshData -> merged=$mergedIsRegistered',
     );
 
+    // Prefer full number with + prefix for storage; fall back to whichever is longer
+    final existingPhone = existing.phoneNumber ?? '';
+    final incomingPhone = incoming.phoneNumber ?? '';
+    String bestPhone;
+    if (incomingPhone.startsWith('+')) {
+      bestPhone = incomingPhone;
+    } else if (existingPhone.startsWith('+')) {
+      bestPhone = existingPhone;
+    } else {
+      bestPhone = incomingPhone.isNotEmpty ? incomingPhone : existingPhone;
+    }
+
     final merged = ContactModel(
-      contactId: (incoming.contactId?.isNotEmpty ?? false) ? incoming.contactId : existing.contactId,
-      phoneNumber: _canonicalPhone(incoming.phoneNumber ?? existing.phoneNumber ?? ''),
+      contactId: (incoming.contactId?.isNotEmpty ?? false)
+          ? incoming.contactId
+          : existing.contactId,
+      phoneNumber: bestPhone,
       name: existingNameGood
           ? existing.name
-          : (incomingNameGood ? incoming.name : (existing.name?.isNotEmpty == true ? existing.name : incoming.name)),
+          : (incomingNameGood
+              ? incoming.name
+              : (existing.name?.isNotEmpty == true
+                  ? existing.name
+                  : incoming.name)),
       isRegistered: mergedIsRegistered,
       createdAt: existing.createdAt ?? incoming.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
     );
     merged.id = existing.id;
-
     if (merged.name == null || merged.name!.trim().isEmpty) {
       merged.name = merged.phoneNumber;
     }
     return merged;
   }
 
-  Future<void> upsertContactsByCanonical(IsarService isar, List<ContactModel> incoming) async {
+  Future<void> upsertContactsByCanonical(
+      IsarService isar, List<ContactModel> incoming) async {
     if (incoming.isEmpty) return;
 
-    final existing = await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
+    final existing =
+        await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
     final existingByCanonical = <String, ContactModel>{};
 
-    // Build map with best candidate if duplicates already exist.
     for (final c in existing) {
       final key = _canonicalPhone(c.phoneNumber ?? '');
       if (key.isEmpty) continue;
@@ -180,21 +202,27 @@ class ContactService {
       if (prev == null) {
         existingByCanonical[key] = c;
       } else {
-        final prevScore = (!_looksLikePhoneName(prev.name) ? 2 : 0) + ((prev.contactId?.isNotEmpty ?? false) ? 1 : 0);
-        final currScore = (!_looksLikePhoneName(c.name) ? 2 : 0) + ((c.contactId?.isNotEmpty ?? false) ? 1 : 0);
+        final prevScore = (!_looksLikePhoneName(prev.name) ? 2 : 0) +
+            ((prev.contactId?.isNotEmpty ?? false) ? 1 : 0);
+        final currScore = (!_looksLikePhoneName(c.name) ? 2 : 0) +
+            ((c.contactId?.isNotEmpty ?? false) ? 1 : 0);
         if (currScore > prevScore) existingByCanonical[key] = c;
       }
     }
 
     await isar.isar.writeTxn(() async {
       for (final raw in incoming) {
-        final key = _canonicalPhone(raw.phoneNumber ?? '');
-        if (key.length < 10) continue;
+        final rawPhone = PhoneUtils.normalizeRaw(raw.phoneNumber ?? '');
+        final key = _canonicalPhone(rawPhone);
+        if (key.length < 7) continue; // too short to be valid
 
-        raw.phoneNumber = key;
+        // Store full number with country code if available
+        raw.phoneNumber = rawPhone.isNotEmpty ? rawPhone : key;
+
         final existingContact = existingByCanonical[key];
         if (existingContact == null) {
-          if (raw.name == null || raw.name!.trim().isEmpty) raw.name = key;
+          if (raw.name == null || raw.name!.trim().isEmpty)
+            raw.name = raw.phoneNumber;
           raw.updatedAt = DateTime.now();
           await isar.isar.contactModels.put(raw);
           existingByCanonical[key] = raw;
@@ -206,8 +234,9 @@ class ContactService {
         existingByCanonical[key] = merged;
       }
 
-      // Cleanup already-duplicated rows sharing same canonical phone.
-      final latestAll = await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
+      // Cleanup duplicates
+      final latestAll =
+          await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
       final keeperByCanonical = <String, ContactModel>{};
       final deleteIds = <Id>{};
       for (final c in latestAll) {
@@ -223,7 +252,6 @@ class ContactService {
         deleteIds.add(keeper.id == merged.id ? c.id : keeper.id);
       }
       for (final keeper in keeperByCanonical.values) {
-        keeper.phoneNumber = _canonicalPhone(keeper.phoneNumber ?? '');
         await isar.isar.contactModels.put(keeper);
       }
       if (deleteIds.isNotEmpty) {
@@ -233,12 +261,13 @@ class ContactService {
   }
 
   Future<ContactModel?> addContactByPhone(String phoneNumber) async {
-    final normalized = _normalizePhone(phoneNumber);
-    if (normalized.length < 10 || !canAttemptLookup) return null;
+    // Use full number for search if it has country code, else canonical
+    final searchPhone = phoneNumber.startsWith('+')
+        ? phoneNumber.trim()
+        : _canonicalPhone(phoneNumber);
+    if (searchPhone.length < 10 || !canAttemptLookup) return null;
     try {
-      // Search user by phone in backend
-      final response = await _api.get('/users/search?phone=$normalized');
-      
+      final response = await _api.get('/users/search?phone=$searchPhone');
       if (response.data['data'] != null) {
         final user = response.data['data'] as Map<String, dynamic>;
         _logResponseUser('users.search', user);
@@ -249,38 +278,39 @@ class ContactService {
       if (_isNetworkIssue(e)) {
         _setLookupBackoff();
       }
-      // Fallback: auto-create pending user via contact match flow.
       try {
         final users = await matchContactsList([
-          {'name': normalized, 'phone': normalized}
+          {'name': searchPhone, 'phone': searchPhone}
         ]);
-        if (users.isNotEmpty) {
-          return users.first;
-        }
+        if (users.isNotEmpty) return users.first;
       } catch (_) {}
       developer.log('Add contact by phone error: $e');
       return null;
     }
   }
 
-  Future<List<ContactModel>> matchContactsList(List<Map<String, dynamic>> contacts) async {
+  Future<List<ContactModel>> matchContactsList(
+      List<Map<String, dynamic>> contacts) async {
     try {
       if (contacts.isEmpty) return [];
       final sourceNameByPhone = <String, String>{};
       final payload = <Map<String, String>>[];
       for (final contact in contacts) {
-        final phone = (contact['phone'] ?? '').toString();
-        final canonical = _canonicalPhone(phone);
-        if (canonical.length < 10) continue;
+        final rawPhone =
+            PhoneUtils.normalizeRaw((contact['phone'] ?? '').toString());
+        if (rawPhone.isEmpty) continue;
         final name = (contact['name'] ?? '').toString().trim();
         if (name.isEmpty) continue;
-        sourceNameByPhone[canonical] = name;
-        payload.add({'name': name, 'phone': canonical});
+        // Key for name lookup — canonical last 10 digits
+        final canonicalPhone = _canonicalPhone(rawPhone);
+        if (canonicalPhone.isEmpty) continue;
+        sourceNameByPhone[canonicalPhone] = name;
+        // Send full number to backend
+        payload.add({'name': name, 'phone': rawPhone});
       }
       if (payload.isEmpty) return [];
       if (!canAttemptLookup) return [];
 
-      // Call backend to match
       final response = await _api.post(
         ApiConfig.matchContacts,
         data: {'contacts': payload},
@@ -291,16 +321,20 @@ class ContactService {
       final matchedUsers = result is Map<String, dynamic>
           ? (result['registeredUsers'] as List? ?? const [])
           : (result as List? ?? const []);
-      developer.log('matchContactsList: sent ${payload.length} contacts, got ${matchedUsers.length} registered users back');
+      developer.log(
+          'matchContactsList: sent ${payload.length} contacts, got ${matchedUsers.length} registered users back');
       final models = <ContactModel>[];
       for (var i = 0; i < matchedUsers.length; i++) {
         final json = matchedUsers[i];
         if (json is! Map<String, dynamic>) continue;
         _logResponseUser('contacts.match', json, index: i);
         final model = ContactModel.fromJson(json);
-        model.phoneNumber = _canonicalPhone(model.phoneNumber ?? '');
-        final fallbackName = sourceNameByPhone[_canonicalPhone(model.phoneNumber ?? '')];
-        if (_looksLikePhoneName(model.name) && fallbackName != null && fallbackName.isNotEmpty) {
+        // Backend returns full +countrycode number — preserve it
+        final canonicalPhone = _canonicalPhone(model.phoneNumber ?? '');
+        final fallbackName = sourceNameByPhone[canonicalPhone];
+        if (_looksLikePhoneName(model.name) &&
+            fallbackName != null &&
+            fallbackName.isNotEmpty) {
           model.name = fallbackName;
         }
         if (model.phoneNumber?.isNotEmpty ?? false) {
@@ -309,9 +343,7 @@ class ContactService {
       }
       return models;
     } catch (e) {
-      if (_isNetworkIssue(e)) {
-        _setLookupBackoff();
-      }
+      if (_isNetworkIssue(e)) _setLookupBackoff();
       developer.log('Match contacts list error: $e');
       return [];
     }
@@ -338,7 +370,7 @@ class ContactService {
           .where((c) => c.phones.isNotEmpty)
           .map((c) => {
                 'name': c.displayName,
-                'phone': _normalizePhone(c.phones.first.number),
+                'phone': PhoneUtils.normalizeRaw(c.phones.first.number),
               })
           .toList();
 
@@ -354,4 +386,3 @@ class ContactService {
     }
   }
 }
-

@@ -230,6 +230,8 @@ class ExpenseService {
                     DateTime.tryParse((e['updatedAt'] as String?) ?? '') ??
                         DateTime.now().toUtc(),
                 relatedExpenseId: e['relatedExpenseId'] as String?,
+                isDeleted: e['isDeleted'] as bool? ?? false,
+                deletedBy: (e['deletedBy'] as String?)?.trim(),
               ))
           .toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -274,14 +276,19 @@ class ExpenseService {
     required List<String> participants,
     String category = 'other',
   }) async {
+    // Send phone as-is to backend — full +countrycode format if available
+    final resolvedParticipants = participants
+        .map((p) => PhoneUtils.normalizeRaw(p))
+        .where((p) => p.isNotEmpty)
+        .toList();
     developer.log(
-        'Creating expense: desc=$description, amount=$totalAmount, category=$category, participants=$participants');
+        'Creating expense: desc=$description, amount=$totalAmount, category=$category, participants=$resolvedParticipants');
     final response = await _api.post(
       ApiConfig.expenses,
       data: {
         'description': description,
         'totalAmount': totalAmount,
-        'participants': participants,
+        'participants': resolvedParticipants,
         'category': category,
       },
     );
@@ -303,7 +310,7 @@ class ExpenseService {
 
     if (!forceRefresh) {
       try {
-        final local = await _isarService.getActiveExpenses();
+        final local = await _isarService.getAllExpenses();
         if (local.isNotEmpty) {
           local.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           _expensesCache = local;
@@ -328,7 +335,7 @@ class ExpenseService {
       return parsed;
     } catch (e) {
       try {
-        final local = await _isarService.getActiveExpenses();
+        final local = await _isarService.getAllExpenses();
         if (local.isNotEmpty) {
           local.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           _expensesCache = local;
@@ -367,7 +374,12 @@ class ExpenseService {
   }
 
   Future<void> deleteExpense(String expenseId) async {
-    await _api.delete('${ApiConfig.expenses}/$expenseId');
+    final response = await _api.delete('${ApiConfig.expenses}/$expenseId');
+    final data = response.data['data'];
+    if (data is Map<String, dynamic>) {
+      final model = ExpenseModel.fromJson(data);
+      await _isarService.upsertExpense(model);
+    }
     _invalidateCaches();
     _emitUpdate();
   }
@@ -406,14 +418,39 @@ class ExpenseService {
   }
 
   Future<void> deleteTransaction(String transactionId) async {
-    await _api.delete(ApiConfig.transactionById(transactionId));
+    final response =
+        await _api.delete(ApiConfig.transactionById(transactionId));
+    final data = response.data['data'];
 
     final existing =
         List<TransactionModel>.from(_transactionsCache ?? const []);
-    existing.removeWhere((t) => t.transactionId == transactionId);
-    _transactionsCache = existing;
+    if (data is Map<String, dynamic>) {
+      final updated = TransactionModel.fromJson(data);
+      existing.removeWhere((t) => t.transactionId == updated.transactionId);
+      existing.insert(0, updated);
+    } else {
+      final index =
+          existing.indexWhere((t) => t.transactionId == transactionId);
+      if (index != -1) {
+        final previous = existing[index];
+        existing[index] = TransactionModel(
+          transactionId: previous.transactionId,
+          fromUserId: previous.fromUserId,
+          toUserId: previous.toUserId,
+          toPhone: previous.toPhone,
+          amount: previous.amount,
+          createdAt: previous.createdAt,
+          updatedAt: DateTime.now().toUtc(),
+          relatedExpenseId: previous.relatedExpenseId,
+          isDeleted: true,
+          deletedBy: previous.deletedBy,
+        );
+      }
+    }
+
+    _transactionsCache = _dedupeTransactions(existing);
     _transactionsCacheAt = DateTime.now();
-    unawaited(_persistTransactions(existing));
+    unawaited(_persistTransactions(_transactionsCache!));
 
     _invalidateCaches();
     _emitUpdate();
@@ -589,6 +626,38 @@ class ExpenseService {
     }
   }
 
+  Future<RefreshResult> refreshAll() async {
+    final failedSections = <String>[];
+    Map<String, dynamic> balances = {};
+
+    try {
+      await getExpenses(forceRefresh: true);
+    } catch (e) {
+      failedSections.add('expenses');
+      developer.log('Refresh expenses failed: $e');
+    }
+
+    try {
+      await getTransactions(forceRefresh: true);
+    } catch (e) {
+      failedSections.add('transactions');
+      developer.log('Refresh transactions failed: $e');
+    }
+
+    try {
+      balances = await getBalances(forceRefresh: true);
+    } catch (e) {
+      failedSections.add('balances');
+      developer.log('Refresh balances failed: $e');
+    }
+
+    _emitUpdate();
+    return RefreshResult(
+      failedSections: List.unmodifiable(failedSections),
+      balances: balances,
+    );
+  }
+
   Future<List<dynamic>> _localConversationById(
     String userId, {
     required int page,
@@ -640,6 +709,8 @@ class ExpenseService {
         'direction': direction,
         'description': sentByMe ? 'Sent payment' : 'Received payment',
         'createdAt': tx.createdAt.toUtc().toIso8601String(),
+        'isDeleted': tx.isDeleted,
+        'deletedBy': tx.deletedBy,
       });
     }
 
@@ -706,7 +777,9 @@ class ExpenseService {
                 ? (item['amount'] as num?)?.round() ??
                     (payload['totalAmount'] as num?)?.round() ??
                     0
-                : (payload['amount'] as num?)?.round() ?? 0;
+                : (item['amount'] as num?)?.round() ??
+                    (payload['amount'] as num?)?.round() ??
+                    0;
 
             final otherId = userId;
             final expenseCreator = payload['createdBy'];
@@ -745,6 +818,15 @@ class ExpenseService {
               'direction': direction,
               'description': description,
               'createdAt': createdAt,
+              'isDeleted': payload['isDeleted'] == true,
+              'deletedBy': payload['deletedBy'] is Map<String, dynamic>
+                  ? ((payload['deletedBy']['name'] as String?) ??
+                      (payload['deletedBy']['phoneNumber'] as String?))
+                  : payload['deletedBy'] as String?,
+              'updatedBy': payload['updatedBy'] is Map<String, dynamic>
+                  ? ((payload['updatedBy']['name'] as String?) ??
+                      (payload['updatedBy']['phoneNumber'] as String?))
+                  : payload['updatedBy'] as String?,
               'expenseId':
                   type == 'expense' ? (payload['_id'] as String?) : null,
               'createdBy':
@@ -915,6 +997,8 @@ class ExpenseService {
         'direction': 'sent',
         'description': 'Sent payment',
         'createdAt': tx.createdAt.toUtc().toIso8601String(),
+        'isDeleted': tx.isDeleted,
+        'deletedBy': tx.deletedBy,
       });
     }
 
@@ -957,21 +1041,14 @@ class ExpenseService {
         'direction': sentByMe ? 'sent' : 'received',
         'counterparty': counterparty,
         'createdAt': tx.createdAt,
+        'isDeleted': tx.isDeleted,
+        'deletedBy': tx.deletedBy,
       });
     }
 
     history.sort((a, b) =>
         (b['createdAt'] as DateTime).compareTo(a['createdAt'] as DateTime));
     return history;
-  }
-
-  Future<void> refreshAll() async {
-    await Future.wait([
-      getExpenses(forceRefresh: true),
-      getTransactions(forceRefresh: true),
-      getBalances(forceRefresh: true),
-    ]);
-    _emitUpdate();
   }
 }
 
@@ -985,4 +1062,17 @@ class TimelinePage {
     required this.nextCursor,
     required this.hasMore,
   });
+}
+
+class RefreshResult {
+  final List<String> failedSections;
+  final Map<String, dynamic> balances;
+
+  const RefreshResult({
+    required this.failedSections,
+    this.balances = const {},
+  });
+
+  bool get hasFailures => failedSections.isNotEmpty;
+  bool get allFailed => failedSections.length == 3;
 }

@@ -28,14 +28,17 @@ class ContactModel {
   });
 
   factory ContactModel.fromJson(Map<String, dynamic> json) {
-    final status = (json['accountStatus'] ?? '').toString().trim().toLowerCase();
+    final status =
+        (json['accountStatus'] ?? '').toString().trim().toLowerCase();
     return ContactModel(
       contactId: json['_id'],
       name: json['name'],
       phoneNumber: json['phoneNumber'],
       isRegistered: status == 'active',
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
-      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
+      createdAt:
+          json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
+      updatedAt:
+          json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
     );
   }
 
@@ -49,4 +52,3 @@ class ContactModel {
     };
   }
 }
-

@@ -101,6 +101,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return fallbackText.isNotEmpty ? fallbackText : 'Unknown';
   }
 
+  Widget _buildChip(String label, {IconData? icon, Color? color}) {
+    final c = color ?? AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: c),
+            const SizedBox(width: 3),
+          ],
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w600, color: c)),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
@@ -276,7 +299,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 icon: const Icon(Icons.close, size: 18),
                                 onPressed: () {
                                   _searchController.clear();
-                                  _searchQuery = '';
+                                  setState(() => _searchQuery = '');
                                   _loadHistory(forceRefresh: true);
                                 },
                               )
@@ -421,6 +444,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               counterpartySummary?['_id']?.toString();
                           final direction = item['direction'] as String?;
                           final date = item['createdAt'] as DateTime;
+                          final isDeleted = item['isDeleted'] == true;
+                          final deletedBy =
+                              (item['deletedBy'] as String?)?.trim();
+                          final updatedBy =
+                              (item['updatedBy'] as String?)?.trim();
 
                           developer.log(
                               '📊 HISTORY ITEM: type=$type, amount=$amountPaise, description=$description');
@@ -428,12 +456,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           final formattedDate = AppDateUtils.formatDate(date);
                           final formattedTime = AppDateUtils.formatTime(date);
 
-                          String displayName;
                           String subtitle;
 
                           if (type == 'transaction') {
                             final isReceivedByMe = direction == 'received';
-                            displayName = _displayLabelForUser(
+                            final displayName = _displayLabelForUser(
                               contactProvider,
                               summary: counterpartySummary,
                               fallback: counterparty,
@@ -458,14 +485,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               : (direction == 'received'
                                   ? AppColors.success
                                   : AppColors.error);
+                          final metaLabel = isDeleted
+                              ? (deletedBy != null && deletedBy.isNotEmpty
+                                  ? 'Deleted by $deletedBy'
+                                  : 'Deleted record')
+                              : updatedBy != null && updatedBy.isNotEmpty
+                                  ? 'Edited by $updatedBy'
+                                  : null;
+                          final entryTitle = description.isNotEmpty
+                              ? description
+                              : (type == 'expense' ? 'Expense' : 'Transaction');
+                          final amountLabel = type == 'expense'
+                              ? 'Your share'
+                              : (direction == 'received'
+                                  ? 'Received'
+                                  : 'Sent');
+                          final amountText = formatMinorUnits(
+                            amountPaise,
+                            currencyCode: preferredCurrencyCode,
+                          );
 
-                          return AppCard(
+                          return Opacity(
+                            opacity: isDeleted ? 0.55 : 1.0,
+                            child: AppCard(
                             type: AppCardType.elevated,
                             margin: EdgeInsets.only(
-                              bottom: AppDimensions.compactCardMargin(context)
-                                  .bottom,
+                              bottom: AppDimensions.compactCardMargin(context).bottom,
                             ),
-                            padding: AppDimensions.compactCardPadding(context),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            backgroundColor: AppColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            shadowColor: amountColor,
                             onTap: () {
                               final items = <DetailItem>[];
                               if (type == 'expense') {
@@ -525,6 +575,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 value: '$formattedDate at $formattedTime',
                                 icon: Icons.calendar_today,
                               ));
+                              if (metaLabel != null) {
+                                items.add(DetailItem(
+                                  label: isDeleted ? 'Deleted' : 'Updated',
+                                  value: metaLabel,
+                                  icon: isDeleted
+                                      ? Icons.delete_outline_rounded
+                                      : Icons.edit_outlined,
+                                  valueColor: isDeleted
+                                      ? AppColors.error
+                                      : AppColors.textSecondary,
+                                ));
+                              }
                               showDialog(
                                 context: context,
                                 builder: (context) => DetailDialog(
@@ -537,25 +599,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               );
                             },
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
+                                // Icon
                                 Container(
-                                  width: 46,
-                                  height: 46,
+                                  width: 42,
+                                  height: 42,
                                   decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        amountColor.withValues(alpha: 0.18),
-                                        amountColor.withValues(alpha: 0.07),
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color:
-                                          amountColor.withValues(alpha: 0.22),
-                                      width: 1.2,
-                                    ),
+                                    color: amountColor.withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(
                                     type == 'expense'
@@ -564,86 +616,120 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             ? Icons.call_received_rounded
                                             : Icons.call_made_rounded),
                                     color: amountColor,
-                                    size: 20,
+                                    size: 19,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
+                                // Middle content
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        description,
-                                        style: AppTextStyles.titleSmall(context)
-                                            .copyWith(
-                                                fontWeight: FontWeight.w700),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              entryTitle,
+                                              style: AppTextStyles.titleSmall(context).copyWith(
+                                                fontWeight: FontWeight.w600,
+                                                decoration: isDeleted ? TextDecoration.lineThrough : null,
+                                                decorationColor: AppColors.textSecondary,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (isDeleted) ...[  
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.error.withValues(alpha: 0.10),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'Deleted',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.error,
+                                                  letterSpacing: 0.2,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
-                                      const SizedBox(height: 3),
+                                      const SizedBox(height: 2),
                                       Text(
                                         subtitle,
-                                        style: AppTextStyles.bodySmall(context),
+                                        style: AppTextStyles.caption(context).copyWith(
+                                          color: AppColors.textSecondary,
+                                        ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        '$formattedDate · $formattedTime',
-                                        style: AppTextStyles.caption(context),
+                                      const SizedBox(height: 5),
+                                      Wrap(
+                                        spacing: 5,
+                                        runSpacing: 3,
+                                        children: [
+                                          _buildChip(
+                                            '$formattedDate · $formattedTime',
+                                            icon: Icons.schedule_rounded,
+                                          ),
+                                          if (type == 'expense' && totalAmountPaise != null)
+                                            _buildChip(
+                                              'Total ${formatMinorUnits(totalAmountPaise, currencyCode: preferredCurrencyCode)}',
+                                              icon: Icons.account_balance_wallet_outlined,
+                                              color: AppColors.primary,
+                                            ),
+                                          if (type == 'expense' && participants > 0)
+                                            _buildChip(
+                                              '${participants + 1} people',
+                                              icon: Icons.group_outlined,
+                                            ),
+                                          if (!isDeleted && metaLabel != null)
+                                            _buildChip(
+                                              metaLabel,
+                                              icon: Icons.edit_outlined,
+                                              color: AppColors.textSecondary,
+                                            ),
+                                        ],
                                       ),
                                     ],
                                   ),
                                 ),
+                                const SizedBox(width: 10),
+                                // Amount
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        formatMinorUnits(amountPaise,
-                                            currencyCode:
-                                                preferredCurrencyCode),
-                                        style: AppTextStyles.labelLarge(context)
-                                            .copyWith(
-                                          color: amountColor,
-                                          fontWeight: FontWeight.w800,
-                                        ),
+                                    Text(
+                                      amountText,
+                                      style: AppTextStyles.titleSmall(context).copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        decoration: isDeleted ? TextDecoration.lineThrough : null,
+                                        decorationColor: AppColors.textSecondary,
+                                        color: isDeleted ? AppColors.textSecondary : amountColor,
                                       ),
                                     ),
-                                    const SizedBox(height: 5),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            amountColor.withValues(alpha: 0.10),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: amountColor.withValues(
-                                              alpha: 0.25),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        type == 'expense'
-                                            ? 'Your share'
-                                            : (direction == 'received'
-                                                ? 'Received'
-                                                : 'Sent'),
-                                        style: AppTextStyles.labelSmall(context)
-                                            .copyWith(
-                                          color: amountColor,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.3,
-                                        ),
-                                      ),
+                                    const SizedBox(height: 4),
+                                    _buildChip(
+                                      amountLabel,
+                                      icon: type == 'expense'
+                                          ? Icons.person_outline_rounded
+                                          : (direction == 'received'
+                                              ? Icons.south_west_rounded
+                                              : Icons.north_east_rounded),
+                                      color: isDeleted ? AppColors.textSecondary : amountColor,
                                     ),
                                   ],
                                 ),
                               ],
                             ),
-                          );
+                          ));
                         },
                       ),
               ),

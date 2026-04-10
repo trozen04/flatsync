@@ -2,7 +2,6 @@ import 'dart:developer' as developer;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +11,7 @@ import '../../widgets/gradient_app_bar.dart';
 import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/form_validation.dart';
 
 class ForgotPinScreen extends StatefulWidget {
   const ForgotPinScreen({super.key});
@@ -100,9 +100,9 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
   }
 
   Future<void> _sendOtp() async {
-    if (_phoneNumber.isEmpty) {
-      CustomSnackBar.show(context,
-          message: 'Enter phone number', isError: true);
+    final phoneError = AppFormValidation.validatePhoneDigits(_phoneNumber);
+    if (phoneError != null) {
+      CustomSnackBar.show(context, message: phoneError, isError: true);
       return;
     }
     if (_countdown > 0) {
@@ -149,15 +149,21 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
   }
 
   Future<void> _resetPin() async {
-    if (_phoneNumber.isEmpty ||
-        _otpController.text.isEmpty ||
-        _pinController.text.isEmpty) {
-      CustomSnackBar.show(context, message: 'Fill all fields', isError: true);
+    final phoneError = AppFormValidation.validatePhoneDigits(_phoneNumber);
+    if (phoneError != null) {
+      CustomSnackBar.show(context, message: phoneError, isError: true);
       return;
     }
-    if (_pinController.text.length < 4 || _pinController.text.length > 6) {
-      CustomSnackBar.show(context,
-          message: 'PIN must be 4-6 digits', isError: true);
+
+    final otpError = AppFormValidation.validateOtp(_otpController.text);
+    if (otpError != null) {
+      CustomSnackBar.show(context, message: otpError, isError: true);
+      return;
+    }
+
+    final pinError = AppFormValidation.validatePin(_pinController.text);
+    if (pinError != null) {
+      CustomSnackBar.show(context, message: pinError, isError: true);
       return;
     }
 
@@ -202,22 +208,19 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                     labelText: 'Phone Number',
                     border: OutlineInputBorder(),
                   ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(15),
-                  ],
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: AppFormValidation.phoneInputFormatters(),
                   onCountryChanged: (country) {
                     context
                         .read<AppPreferencesService>()
                         .autoSetCurrencyFromCountry(country.code);
                   },
                   onChanged: (phone) {
-                    final digits =
-                        phone.number.replaceAll(RegExp(r'[^0-9]'), '');
                     setState(() {
-                      _phoneNumber = digits.length >= 6 && digits.length <= 15
-                          ? phone.completeNumber
-                          : '';
+                      _phoneNumber =
+                          AppFormValidation.isValidPhoneDigits(phone.number)
+                              ? phone.completeNumber
+                              : '';
                     });
                     context
                         .read<AppPreferencesService>()
@@ -246,8 +249,8 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    maxLength: 6,
+                    inputFormatters: AppFormValidation.otpInputFormatters(),
+                    maxLength: AppFormValidation.otpLength,
                   ),
                   AppDimensions.h10(context),
                   TextField(
@@ -264,9 +267,9 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                       ),
                     ),
                     keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    inputFormatters: AppFormValidation.pinInputFormatters(),
                     obscureText: _obscurePin,
-                    maxLength: 4,
+                    maxLength: AppFormValidation.pinLength,
                   ),
                   AppDimensions.h10(context),
                   SizedBox(

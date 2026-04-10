@@ -9,6 +9,8 @@ import '../../services/expense_service.dart';
 import '../../services/contact_service.dart';
 import '../../services/isar_service.dart';
 import '../../services/notification_service.dart';
+import '../../utils/custom_snackbar.dart';
+import '../../utils/network_error_handler.dart';
 import '../auth/login_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../expenses/add_expense_screen.dart';
@@ -126,8 +128,8 @@ class _AppShellState extends State<AppShell> {
       final contactService = context.read<ContactService>();
       final isar = context.read<IsarService>();
 
-      await expenseService.refreshAll();
-      final balances = await expenseService.getBalances(forceRefresh: true);
+      final refreshResult = await expenseService.refreshAll();
+      final balances = refreshResult.balances;
       if (balances.isNotEmpty) {
         final contacts = expenseService.getCachedBalanceContacts();
         if (contacts.isNotEmpty) {
@@ -135,6 +137,28 @@ class _AppShellState extends State<AppShell> {
           contactService.notifyUpdate();
         }
       }
+
+      if (!mounted) return;
+      if (refreshResult.hasFailures) {
+        final message = refreshResult.allFailed
+            ? 'Unable to reach the server. Showing cached data if available.'
+            : 'Some sections could not refresh: ${refreshResult.failedSections.join(', ')}.';
+        CustomSnackBar.show(
+          context,
+          message: message,
+          isError: true,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      CustomSnackBar.show(
+        context,
+        message: NetworkErrorHandler.message(
+          error,
+          fallback: 'Unable to refresh data right now.',
+        ),
+        isError: true,
+      );
     } finally {
       if (mounted) setState(() => _refreshing = false);
     }

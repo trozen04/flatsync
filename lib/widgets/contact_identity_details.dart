@@ -79,4 +79,3 @@ class ContactIdentityDetails extends StatelessWidget {
     );
   }
 }
-

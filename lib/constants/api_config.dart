@@ -1,6 +1,8 @@
 class ApiConfig {
   // Environment-based configuration
   static const bool isProduction = bool.fromEnvironment('dart.vm.product');
+  static const String baseUrlOverride =
+      String.fromEnvironment('FLATSYNC_API_BASE_URL');
 
   /// Production URL - UPDATE THIS WITH YOUR ACTUAL PRODUCTION URL
   // static const String productionUrl =
@@ -10,10 +12,12 @@ class ApiConfig {
       'https://flatsyncbackend-production.up.railway.app/api';
 
   /// Development URL - Use your computer's IP address
-  static const String developmentUrl = 'http://192.168.1.40:5000/api';
+  static const String developmentUrl = 'http://192.168.1.46:5000/api';
 
   // Auto-select based on build mode
-  static String get baseUrl => isProduction ? productionUrl : developmentUrl;
+  static String get baseUrl => baseUrlOverride.isNotEmpty
+      ? baseUrlOverride
+      : (isProduction ? productionUrl : developmentUrl);
   // static String get baseUrl => productionUrl;
 
   static const Duration timeout = Duration(seconds: 30);

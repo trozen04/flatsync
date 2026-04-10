@@ -19,6 +19,7 @@ import '../../services/auth_service.dart';
 import '../../services/biometric_auth_service.dart';
 import '../../services/notification_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/form_validation.dart';
 import '../../utils/network_error_handler.dart';
 import '../../constants/app_shadows.dart';
 
@@ -256,10 +257,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<bool> _saveName(String name) async {
     if (_saving) return false;
     final overlay = Overlay.of(context);
-    if (name.isEmpty) {
+    final validationError =
+        AppFormValidation.validateName(name, fieldLabel: 'Name');
+    if (validationError != null) {
       CustomSnackBar.showOnOverlay(
         overlay,
-        message: 'Name is required',
+        message: validationError,
         isError: true,
       );
       return false;
@@ -272,6 +275,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       CustomSnackBar.showOnOverlay(
         overlay,
         message: 'No changes to save',
+        isError: true,
       );
       return false;
     }
@@ -398,6 +402,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     TextField(
                       controller: nameController,
                       textCapitalization: TextCapitalization.words,
+                      maxLength: AppFormValidation.nameMaxLength,
+                      inputFormatters: AppFormValidation.nameInputFormatters(),
                       decoration: const InputDecoration(
                         labelText: 'Name',
                         border: OutlineInputBorder(),
@@ -421,10 +427,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         final overlay = Overlay.of(sheetContext);
                         final navigator = Navigator.of(sheetContext);
                         final name = nameController.text.trim();
-                        if (name.isEmpty) {
+                        final validationError = AppFormValidation.validateName(
+                          name,
+                          fieldLabel: 'Name',
+                        );
+                        if (validationError != null) {
                           CustomSnackBar.showOnOverlay(
                             overlay,
-                            message: 'Name is required',
+                            message: validationError,
                             isError: true,
                           );
                           return;

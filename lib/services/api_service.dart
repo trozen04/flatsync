@@ -15,6 +15,7 @@ class ApiService {
       'signed in on another device';
   static const String _fallbackSessionInvalidationMessage =
       'Your account was signed in on another device. Please log in again.';
+  static const int _maxGetAttempts = 3;
 
   ApiService() {
     _dio = Dio(BaseOptions(
@@ -101,6 +102,17 @@ class ApiService {
 
   Stream<String> get sessionInvalidated => _sessionInvalidatedController.stream;
 
+  bool _isTransientGetError(DioException error) {
+    final statusCode = error.response?.statusCode;
+    return error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.sendTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.connectionError ||
+        (error.type == DioExceptionType.badResponse &&
+            statusCode != null &&
+            const {502, 503, 504}.contains(statusCode));
+  }
+
   bool _isSessionInvalidationMessage(String message) {
     final normalized = message.toLowerCase();
     return normalized.contains(_sessionInvalidationPhrase);
@@ -183,9 +195,38 @@ class ApiService {
     return '';
   }
 
+  Future<Response<dynamic>> _getWithRetry(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    DioException? lastError;
+
+    for (var attempt = 1; attempt <= _maxGetAttempts; attempt++) {
+      try {
+        return await _dio.get(path, queryParameters: queryParameters);
+      } on DioException catch (error) {
+        lastError = error;
+
+        if (!_isTransientGetError(error) || attempt == _maxGetAttempts) {
+          rethrow;
+        }
+
+        final delayMs = attempt == 1 ? 500 : 1500;
+        developer.log(
+          '[API] transient GET error on $path, retrying in ${delayMs}ms '
+          '(attempt $attempt/$_maxGetAttempts)',
+          name: 'ApiService',
+        );
+        await Future.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+
+    throw lastError!;
+  }
+
   Future<Response> get(String path,
       {Map<String, dynamic>? queryParameters}) async {
-    return await _dio.get(path, queryParameters: queryParameters);
+    return await _getWithRetry(path, queryParameters: queryParameters);
   }
 
   Future<Response> post(String path, {dynamic data}) async {

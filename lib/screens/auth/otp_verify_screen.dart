@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../../constants/app_dimensions.dart';
@@ -12,6 +11,7 @@ import '../../services/isar_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/app_preferences_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/form_validation.dart';
 import '../shell/app_shell.dart';
 
 class OtpVerifyScreen extends StatefulWidget {
@@ -36,10 +36,22 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
   bool _obscurePin = true;
 
   Future<void> _verify() async {
-    if (_otpController.text.isEmpty ||
-        _nameController.text.isEmpty ||
-        _pinController.text.isEmpty) {
-      CustomSnackBar.show(context, message: 'Fill all fields', isError: true);
+    final otpError = AppFormValidation.validateOtp(_otpController.text);
+    if (otpError != null) {
+      CustomSnackBar.show(context, message: otpError, isError: true);
+      return;
+    }
+
+    final nameError = AppFormValidation.validateName(_nameController.text,
+        fieldLabel: 'Name');
+    if (nameError != null) {
+      CustomSnackBar.show(context, message: nameError, isError: true);
+      return;
+    }
+
+    final pinError = AppFormValidation.validatePin(_pinController.text);
+    if (pinError != null) {
+      CustomSnackBar.show(context, message: pinError, isError: true);
       return;
     }
 
@@ -123,8 +135,9 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
                             border: OutlineInputBorder(),
                           ),
                           keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          maxLength: 6,
+                          inputFormatters:
+                              AppFormValidation.otpInputFormatters(),
+                          maxLength: AppFormValidation.otpLength,
                         ),
                         AppDimensions.h20(context),
                         TextField(
@@ -134,6 +147,9 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
                             border: OutlineInputBorder(),
                           ),
                           textCapitalization: TextCapitalization.words,
+                          maxLength: AppFormValidation.nameMaxLength,
+                          inputFormatters:
+                              AppFormValidation.nameInputFormatters(),
                         ),
                         AppDimensions.h20(context),
                         TextField(
@@ -150,9 +166,10 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
                             ),
                           ),
                           keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          inputFormatters:
+                              AppFormValidation.pinInputFormatters(),
                           obscureText: _obscurePin,
-                          maxLength: 4,
+                          maxLength: AppFormValidation.pinLength,
                         ),
                         AppDimensions.h30(context),
                         SizedBox(

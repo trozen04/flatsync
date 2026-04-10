@@ -1,6 +1,5 @@
 import 'package:flatsync/utils/image_assets.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
@@ -14,6 +13,7 @@ import '../../services/expense_service.dart';
 import '../../services/isar_service.dart';
 import '../../services/notification_service.dart';
 import '../../utils/custom_snackbar.dart';
+import '../../utils/form_validation.dart';
 import '../../widgets/gradient_app_bar.dart';
 import '../shell/app_shell.dart';
 import 'forgot_pin_screen.dart';
@@ -32,26 +32,31 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _obscurePin = true;
   DateTime? _lastLoginAttempt;
-  static const _cooldown = Duration(seconds: 30);
+  static const _cooldown = Duration(seconds: 10);
+  int _countdown = 0;
+  bool _countdownActive = false;
 
   Future<void> _login() async {
-    if (_phoneNumber.isEmpty || _pinController.text.isEmpty) {
-      CustomSnackBar.show(context,
-          message: 'Enter phone and PIN', isError: true);
+    final phoneError = AppFormValidation.validatePhoneDigits(_phoneNumber);
+    if (phoneError != null) {
+      CustomSnackBar.show(context, message: phoneError, isError: true);
+      return;
+    }
+
+    final pinError = AppFormValidation.validatePin(_pinController.text);
+    if (pinError != null) {
+      CustomSnackBar.show(context, message: pinError, isError: true);
       return;
     }
 
     final now = DateTime.now();
     if (_lastLoginAttempt != null &&
         now.difference(_lastLoginAttempt!) < _cooldown) {
-      final remaining =
-          _cooldown.inSeconds - now.difference(_lastLoginAttempt!).inSeconds;
-      CustomSnackBar.show(context,
-          message: 'Please wait $remaining seconds before trying again',
-          isError: true);
       return;
     }
     _lastLoginAttempt = now;
+    setState(() => _countdown = _cooldown.inSeconds);
+    _startCountdown();
 
     setState(() => _loading = true);
 
@@ -95,12 +100,29 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       developer.log('Login error: $e');
       if (mounted) {
-        final errorMsg = authService.getAuthErrorMessage(e, flow: AuthFlow.login);
+        final errorMsg =
+            authService.getAuthErrorMessage(e, flow: AuthFlow.login);
         CustomSnackBar.show(context, message: errorMsg, isError: true);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _startCountdown() {
+    if (_countdownActive || _countdown <= 0) return;
+    _countdownActive = true;
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) { _countdownActive = false; return false; }
+      if (_countdown <= 1) {
+        setState(() => _countdown = 0);
+        _countdownActive = false;
+        return false;
+      }
+      setState(() => _countdown--);
+      return true;
+    });
   }
 
   @override
@@ -136,24 +158,23 @@ class _LoginScreenState extends State<LoginScreen> {
                             labelText: 'Phone Number',
                             border: OutlineInputBorder(),
                           ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(15),
-                          ],
+                          keyboardType: TextInputType.phone,
+                          inputFormatters:
+                              AppFormValidation.phoneInputFormatters(),
                           onCountryChanged: (country) {
                             context
                                 .read<AppPreferencesService>()
                                 .autoSetCurrencyFromCountry(country.code);
                           },
                           onChanged: (phone) {
-                            final digits =
-                                phone.number.replaceAll(RegExp(r'[^0-9]'), '');
-                            if (digits.length >= 6 && digits.length <= 15) {
-                              _phoneNumber = phone.completeNumber;
-                            }
+                            _phoneNumber = AppFormValidation.isValidPhoneDigits(
+                                    phone.number)
+                                ? phone.completeNumber
+                                : '';
                             context
                                 .read<AppPreferencesService>()
-                                .autoSetCurrencyFromCountry(phone.countryISOCode);
+                                .autoSetCurrencyFromCountry(
+                                    phone.countryISOCode);
                           },
                         ),
                         AppDimensions.h20(context),
@@ -171,17 +192,21 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          inputFormatters:
+                              AppFormValidation.pinInputFormatters(),
                           obscureText: _obscurePin,
-                          maxLength: 4,
+                          maxLength: AppFormValidation.pinLength,
                         ),
                         AppDimensions.h30(context),
                         SizedBox(
                           width: double.infinity,
                           child: CustomButton(
-                            text: 'Login',
-                            onPressed: _login,
+                            text: _countdown > 0
+                                ? 'Wait $_countdown seconds'
+                                : 'Login',
+                            onPressed: _countdown > 0 ? null : _login,
                             isLoading: _loading,
+                            isDisabled: _countdown > 0,
                           ),
                         ),
                         Align(
@@ -196,7 +221,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               if (!context.mounted) return;
                               if (resetDone == true) {
                                 CustomSnackBar.show(context,
-                                    message: 'PIN reset successful. Please login.');
+                                    message:
+                                        'PIN reset successful. Please login.');
                               }
                             },
                             child: Text(
@@ -210,7 +236,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           text: 'New user? Sign Up',
                           onPressed: () => Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const SignupScreen()),
+                            MaterialPageRoute(
+                                builder: (_) => const SignupScreen()),
                           ),
                           isOutlined: true,
                         ),

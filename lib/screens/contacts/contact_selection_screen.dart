@@ -111,7 +111,8 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
       if (mounted) {
         CustomSnackBar.show(
           context,
-          message: NetworkErrorHandler.message(e, fallback: 'Failed to load contacts'),
+          message: NetworkErrorHandler.message(e,
+              fallback: 'Failed to load contacts'),
           isError: true,
         );
         setState(() => _loading = false);
@@ -119,32 +120,36 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
     }
   }
 
-  Future<Set<String>> _loadPreviouslyAddedPhones(List<Contact> deviceContacts) async {
+  Future<Set<String>> _loadPreviouslyAddedPhones(
+      List<Contact> deviceContacts) async {
     try {
       final isar = context.read<IsarService>();
       final savedContacts =
           await isar.isar.contactModels.filter().idGreaterThan(-1).findAll();
       if (savedContacts.isEmpty) return <String>{};
       final savedCanonicalPhones = savedContacts
-          .map((c) => _canonicalPhone(c.phoneNumber ?? ''))
+          .map((c) => PhoneUtils.canonical(c.phoneNumber ?? ''))
           .where((p) => p.isNotEmpty)
           .toSet();
       return deviceContacts
           .map((c) => _normalizePhone(c.phones.first.number))
-          .where((phone) => savedCanonicalPhones.contains(_canonicalPhone(phone)))
+          .where((phone) =>
+              savedCanonicalPhones.contains(PhoneUtils.canonical(phone)))
           .toSet();
     } catch (_) {
       return <String>{};
     }
   }
 
-  String _normalizePhone(String phone) => PhoneUtils.normalize(phone);
+  String _normalizePhone(String phone) => PhoneUtils.normalizeRaw(phone);
   String _canonicalPhone(String phone) => PhoneUtils.canonical(phone);
-  bool _looksLikePhoneName(String? value) => PhoneUtils.looksLikePhoneName(value);
+  bool _looksLikePhoneName(String? value) =>
+      PhoneUtils.looksLikePhoneName(value);
 
   Future<void> _syncSelected() async {
     if (_selectedPhones.isEmpty) {
-      CustomSnackBar.show(context, message: 'Select at least one contact', isError: true);
+      CustomSnackBar.show(context,
+          message: 'Select at least one contact', isError: true);
       return;
     }
     setState(() => _syncing = true);
@@ -152,14 +157,19 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
       final isar = context.read<IsarService>();
       final contactService = context.read<ContactService>();
       final selectedContacts = _deviceContacts
-          .where((c) => _selectedPhones.contains(_normalizePhone(c.phones.first.number)))
+          .where((c) =>
+              _selectedPhones.contains(_normalizePhone(c.phones.first.number)))
           .toList();
 
       final contactsData = selectedContacts
-          .map((c) => {'name': c.displayName, 'phone': _normalizePhone(c.phones.first.number)})
+          .map((c) => {
+                'name': c.displayName,
+                'phone': _normalizePhone(c.phones.first.number)
+              })
           .toList();
 
-      final registeredUsers = await contactService.matchContactsList(contactsData);
+      final registeredUsers =
+          await contactService.matchContactsList(contactsData);
 
       final registeredPhones = <String, ContactModel>{};
       for (final user in registeredUsers) {
@@ -170,15 +180,21 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
 
       final allContacts = <ContactModel>[];
       for (var contact in selectedContacts) {
-        final phone = _normalizePhone(contact.phones.first.number);
-        final registered = registeredPhones[_canonicalPhone(phone)];
+        final rawPhone = _normalizePhone(contact.phones.first.number);
+        final phone = _canonicalPhone(rawPhone);
+        final registered = registeredPhones[phone];
         if (registered != null) {
-          if (_looksLikePhoneName(registered.name)) registered.name = contact.displayName;
+          if (_looksLikePhoneName(registered.name))
+            registered.name = contact.displayName;
+          // Preserve raw phone with country code if registered model has only 10 digits
+          if ((registered.phoneNumber?.length ?? 0) <= 10) {
+            registered.phoneNumber = rawPhone;
+          }
           allContacts.add(registered);
         } else {
           allContacts.add(ContactModel(
             name: contact.displayName,
-            phoneNumber: phone,
+            phoneNumber: rawPhone,
             isRegistered: false,
             createdAt: DateTime.now(),
           ));
@@ -189,7 +205,8 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
       contactService.notifyUpdate();
 
       if (mounted) {
-        CustomSnackBar.show(context, message: 'Added ${allContacts.length} contacts');
+        CustomSnackBar.show(context,
+            message: 'Added ${allContacts.length} contacts');
         Navigator.of(context).pop(allContacts.length);
       }
     } catch (e) {
@@ -197,7 +214,8 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
       if (mounted) {
         CustomSnackBar.show(
           context,
-          message: NetworkErrorHandler.message(e, fallback: 'Failed to sync contacts'),
+          message: NetworkErrorHandler.message(e,
+              fallback: 'Failed to sync contacts'),
           isError: true,
         );
       }
@@ -226,13 +244,15 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 ),
                 child: _syncing
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
                       )
                     : Text(
                         'Add $selectedCount',
@@ -252,7 +272,8 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
               : Column(
                   children: [
                     Padding(
-                      padding: AppDimensions.appMargin(context).copyWith(bottom: 0),
+                      padding:
+                          AppDimensions.appMargin(context).copyWith(bottom: 0),
                       child: TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
@@ -273,21 +294,26 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                     ),
                     if (selectedCount > 0)
                       Padding(
-                        padding: AppDimensions.appMargin(context).copyWith(top: 8, bottom: 0),
+                        padding: AppDimensions.appMargin(context)
+                            .copyWith(top: 8, bottom: 0),
                         child: Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.08),
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                  color: AppColors.primary.withValues(alpha: 0.20),
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.20),
                                 ),
                               ),
                               child: Text(
                                 '$selectedCount selected',
-                                style: AppTextStyles.labelSmall(context).copyWith(
+                                style:
+                                    AppTextStyles.labelSmall(context).copyWith(
                                   color: AppColors.primary,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -295,10 +321,12 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                             ),
                             const Spacer(),
                             TextButton(
-                              onPressed: () => setState(() => _selectedPhones.clear()),
+                              onPressed: () =>
+                                  setState(() => _selectedPhones.clear()),
                               child: Text(
                                 'Clear all',
-                                style: AppTextStyles.labelSmall(context).copyWith(
+                                style:
+                                    AppTextStyles.labelSmall(context).copyWith(
                                   color: AppColors.error,
                                 ),
                               ),
@@ -309,11 +337,13 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                     AppDimensions.h10(context),
                     Expanded(
                       child: ListView.builder(
-                        padding: AppDimensions.appMargin(context).copyWith(top: 0),
+                        padding:
+                            AppDimensions.appMargin(context).copyWith(top: 0),
                         itemCount: _filteredContacts.length,
                         itemBuilder: (context, index) {
                           final contact = _filteredContacts[index];
-                          final phone = _normalizePhone(contact.phones.first.number);
+                          final phone =
+                              _normalizePhone(contact.phones.first.number);
                           final isSelected = _selectedPhones.contains(phone);
                           final initial = contact.displayName.isNotEmpty
                               ? contact.displayName[0].toUpperCase()
@@ -330,7 +360,8 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 180),
                               margin: AppDimensions.compactCardMargin(context),
-                              padding: AppDimensions.compactCardPadding(context),
+                              padding:
+                                  AppDimensions.compactCardPadding(context),
                               decoration: BoxDecoration(
                                 color: isSelected
                                     ? AppColors.primary.withValues(alpha: 0.05)
@@ -338,17 +369,21 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
                                   color: isSelected
-                                      ? AppColors.primary.withValues(alpha: 0.35)
+                                      ? AppColors.primary
+                                          .withValues(alpha: 0.35)
                                       : AppColors.borderLight,
                                   width: isSelected ? 1.5 : 1.2,
                                 ),
-                                boxShadow: isSelected ? [] : [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.04),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
+                                boxShadow: isSelected
+                                    ? []
+                                    : [
+                                        BoxShadow(
+                                          color: Colors.black
+                                              .withValues(alpha: 0.04),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
                               ),
                               child: Row(
                                 children: [
@@ -358,14 +393,18 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                     decoration: BoxDecoration(
                                       color: isSelected
                                           ? AppColors.primary
-                                          : AppColors.primary.withValues(alpha: 0.10),
+                                          : AppColors.primary
+                                              .withValues(alpha: 0.10),
                                       shape: BoxShape.circle,
                                     ),
                                     alignment: Alignment.center,
                                     child: Text(
                                       initial,
-                                      style: AppTextStyles.titleSmall(context).copyWith(
-                                        color: isSelected ? Colors.white : AppColors.primary,
+                                      style: AppTextStyles.titleSmall(context)
+                                          .copyWith(
+                                        color: isSelected
+                                            ? Colors.white
+                                            : AppColors.primary,
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
@@ -373,12 +412,15 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
                                           contact.displayName,
-                                          style: AppTextStyles.titleSmall(context).copyWith(
+                                          style:
+                                              AppTextStyles.titleSmall(context)
+                                                  .copyWith(
                                             fontWeight: FontWeight.w600,
                                           ),
                                           maxLines: 1,
@@ -387,7 +429,8 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                         const SizedBox(height: 2),
                                         Text(
                                           phone,
-                                          style: AppTextStyles.bodySmall(context),
+                                          style:
+                                              AppTextStyles.bodySmall(context),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -399,7 +442,9 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
                                     width: 24,
                                     height: 24,
                                     decoration: BoxDecoration(
-                                      color: isSelected ? AppColors.primary : Colors.transparent,
+                                      color: isSelected
+                                          ? AppColors.primary
+                                          : Colors.transparent,
                                       borderRadius: BorderRadius.circular(7),
                                       border: Border.all(
                                         color: isSelected

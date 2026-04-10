@@ -7,6 +7,8 @@ class TransactionModel {
   DateTime createdAt;
   DateTime updatedAt;
   String? relatedExpenseId;
+  bool isDeleted;
+  String? deletedBy;
 
   TransactionModel({
     this.transactionId = '',
@@ -17,6 +19,8 @@ class TransactionModel {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.relatedExpenseId,
+    this.isDeleted = false,
+    this.deletedBy,
   })  : createdAt = (createdAt ?? DateTime.now()).toUtc(),
         updatedAt = (updatedAt ?? createdAt ?? DateTime.now()).toUtc();
 
@@ -60,7 +64,22 @@ class TransactionModel {
           ) ??
           DateTime.now().toUtc(),
       relatedExpenseId: relatedExpenseId,
+      isDeleted: json['isDeleted'] as bool? ?? false,
+      deletedBy: _extractDeletedBy(json['deletedBy']),
     );
+  }
+
+  static String? _extractDeletedBy(dynamic deletedBy) {
+    if (deletedBy is String && deletedBy.trim().isNotEmpty) {
+      return deletedBy.trim();
+    }
+    if (deletedBy is Map<String, dynamic>) {
+      final name = deletedBy['name'];
+      if (name is String && name.trim().isNotEmpty) return name.trim();
+      final phone = deletedBy['phoneNumber'];
+      if (phone is String && phone.trim().isNotEmpty) return phone.trim();
+    }
+    return null;
   }
 
   Map<String, dynamic> toJson() {
@@ -73,6 +92,8 @@ class TransactionModel {
       'createdAt': createdAt.toUtc().toIso8601String(),
       'updatedAt': updatedAt.toUtc().toIso8601String(),
       'relatedExpenseId': relatedExpenseId,
+      'isDeleted': isDeleted,
+      'deletedBy': deletedBy,
     };
   }
 }

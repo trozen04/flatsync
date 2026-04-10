@@ -279,6 +279,46 @@ class _ConversationScreenState extends State<ConversationScreen> {
     return 'Seen on ${AppDateUtils.formatDate(seenAt)}';
   }
 
+  Color _entryAccentColor(String type, String direction) {
+    if (type == 'expense') return AppColors.primary;
+    return direction == 'sent' ? AppColors.success : AppColors.info;
+  }
+
+  Widget _buildBubblePill({
+    required IconData icon,
+    required String label,
+    required Color color,
+    bool shrink = false,
+  }) {
+    return Container(
+      constraints: shrink ? const BoxConstraints(maxWidth: 160) : null,
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _confirmDelete({
     required String title,
     required String message,
@@ -855,8 +895,40 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                   final tagText = type == 'expense'
                                       ? 'Expense'
                                       : 'Transaction';
+                                  final accentColor =
+                                      _entryAccentColor(type, direction);
+                                  final formattedDate =
+                                      AppDateUtils.formatDate(date);
+                                  final formattedTime =
+                                      AppDateUtils.formatTime(date);
+                                  final amountText = formatMinorUnits(
+                                    amount,
+                                    currencyCode: preferredCurrencyCode,
+                                  );
+                                  final metaLabel = isDeleted
+                                      ? (deletedBy != null &&
+                                              deletedBy.trim().isNotEmpty
+                                          ? 'Deleted by $deletedBy'
+                                          : 'Deleted record')
+                                      : updatedBy != null
+                                          ? 'Edited by $updatedBy'
+                                          : (isYouPaid && seenByOther
+                                              ? _formatSeenLabel(seenAt)
+                                              : null);
+                                  final metaIcon = isDeleted
+                                      ? Icons.delete_outline_rounded
+                                      : updatedBy != null
+                                          ? Icons.edit_outlined
+                                          : Icons.done_all_rounded;
+                                  final metaColor = isDeleted
+                                      ? AppColors.error
+                                      : updatedBy != null
+                                          ? AppColors.textSecondary
+                                          : AppColors.success;
 
-                                  return Align(
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: Align(
                                     alignment: isYouPaid
                                         ? Alignment.centerRight
                                         : Alignment.centerLeft,
@@ -936,6 +1008,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                               AppDateUtils.formatDateTime(date),
                                           icon: Icons.calendar_today,
                                         ));
+                                        if (metaLabel != null) {
+                                          items.add(DetailItem(
+                                            label: isDeleted
+                                                ? 'Deleted'
+                                                : 'Updated',
+                                            value: metaLabel,
+                                            icon: metaIcon,
+                                            valueColor: metaColor,
+                                          ));
+                                        }
 
                                         showDialog(
                                           context: context,
@@ -967,325 +1049,219 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                 participantsCount: participants,
                                               )
                                           : null,
-                                      child: Container(
-                                        margin:
-                                            const EdgeInsets.only(bottom: 8),
-                                        constraints: BoxConstraints(
-                                            maxWidth: MediaQuery.of(context)
-                                                    .size
-                                                    .width *
-                                                0.75),
-                                        decoration: BoxDecoration(
-                                          color: isDeleted
-                                              ? AppColors.error
-                                                  .withValues(alpha: 0.04)
-                                              : Theme.of(context)
-                                                  .colorScheme
-                                                  .surface,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          border: Border.all(
-                                            color: isDeleted
-                                                ? AppColors.error
-                                                    .withValues(alpha: 0.25)
-                                                : AppColors.border,
-                                            width: 1,
+                                      child: Opacity(
+                                        opacity: isDeleted ? 0.55 : 1.0,
+                                        child: Container(
+                                          constraints: BoxConstraints(
+                                            maxWidth: MediaQuery.of(context).size.width * 0.78,
                                           ),
-                                          boxShadow: AppShadows.card,
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 6),
-                                              decoration: BoxDecoration(
-                                                color: (type == 'expense'
-                                                        ? AppColors.primary
-                                                        : (isYouPaid
-                                                            ? AppColors.success
-                                                            : AppColors.info))
-                                                    .withValues(alpha: 0.1),
-                                                borderRadius:
-                                                    const BorderRadius.only(
-                                                  topLeft: Radius.circular(11),
-                                                  topRight: Radius.circular(11),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.surface,
+                                            borderRadius: BorderRadius.circular(14),
+                                            border: Border.all(
+                                              color: accentColor.withValues(alpha: 0.25),
+                                              width: 1,
+                                            ),
+                                            boxShadow: AppShadows.card,
+                                          ),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // Header
+                                              Container(
+                                                padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                                                color: accentColor.withValues(alpha: 0.16),
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      type == 'expense' ? Icons.receipt_long_rounded : Icons.payments_rounded,
+                                                      size: 13,
+                                                      color: accentColor,
+                                                    ),
+                                                    const SizedBox(width: 5),
+                                                    Text(
+                                                      tagText,
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.w700,
+                                                        color: accentColor,
+                                                      ),
+                                                    ),
+                                                    if (isDeleted) ...[
+                                                      const SizedBox(width: 6),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: AppColors.error.withValues(alpha: 0.15),
+                                                          borderRadius: BorderRadius.circular(4),
+                                                        ),
+                                                        child: const Text(
+                                                          'Deleted',
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: AppColors.error,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                    const Spacer(),
+                                                    Text(
+                                                      '$formattedDate · $formattedTime',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w500,
+                                                        color: accentColor.withValues(alpha: 0.75),
+                                                      ),
+                                                    ),
+                                                    if (canManageEntry)
+                                                      PopupMenuButton<String>(
+                                                        tooltip: 'Options',
+                                                        padding: EdgeInsets.zero,
+                                                        onSelected: (value) async {
+                                                          final selectedEntryId = entryId;
+                                                          if (value == 'share') {
+                                                            _shareEntry(item, preferredCurrencyCode);
+                                                          } else if (value == 'edit_expense') {
+                                                            await _handleExpenseEdit(
+                                                              expenseId: selectedEntryId,
+                                                              description: description,
+                                                              totalAmount: totalAmount ?? amount,
+                                                              participantsCount: participants,
+                                                            );
+                                                          } else if (value == 'delete_expense') {
+                                                            await _handleExpenseDelete(selectedEntryId, participantsCount: participants);
+                                                          } else if (value == 'delete_transaction') {
+                                                            await _handleTransactionDelete(selectedEntryId);
+                                                          }
+                                                        },
+                                                        itemBuilder: (context) => [
+                                                          const PopupMenuItem<String>(
+                                                            value: 'share',
+                                                            child: Row(children: [
+                                                              Icon(Icons.share_outlined, size: 16),
+                                                              SizedBox(width: 8),
+                                                              Text('Share'),
+                                                            ]),
+                                                          ),
+                                                          if (canEditExpense)
+                                                            const PopupMenuItem<String>(value: 'edit_expense', child: Text('Edit')),
+                                                          if (canDeleteExpense)
+                                                            const PopupMenuItem<String>(value: 'delete_expense', child: Text('Delete')),
+                                                          if (canDeleteTransaction)
+                                                            const PopupMenuItem<String>(value: 'delete_transaction', child: Text('Delete')),
+                                                        ],
+                                                        child: const Padding(
+                                                          padding: EdgeInsets.symmetric(horizontal: 6),
+                                                          child: Icon(Icons.more_vert, size: 16, color: AppColors.textSecondary),
+                                                        ),
+                                                      ),
+                                                  ],
                                                 ),
                                               ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(
-                                                      type == 'expense'
-                                                          ? Icons.receipt_long
-                                                          : Icons.payments,
-                                                      size: 12,
-                                                      color: type == 'expense'
-                                                          ? AppColors.primary
-                                                          : (isYouPaid
-                                                              ? AppColors
-                                                                  .success
-                                                              : AppColors
-                                                                  .info)),
-                                                  const SizedBox(width: 5),
-                                                  Text(
-                                                    tagText,
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      color: type == 'expense'
-                                                          ? AppColors.primary
-                                                          : (isYouPaid
-                                                              ? AppColors
-                                                                  .success
-                                                              : AppColors.info),
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                  const Spacer(),
-                                                  if (canManageEntry)
-                                                    PopupMenuButton<String>(
-                                                      tooltip: 'Options',
-                                                      padding: EdgeInsets.zero,
-                                                      onSelected:
-                                                          (value) async {
-                                                        final selectedEntryId =
-                                                            entryId;
-                                                        if (value == 'share') {
-                                                          _shareEntry(item,
-                                                              preferredCurrencyCode);
-                                                        } else if (value ==
-                                                            'edit_expense') {
-                                                          await _handleExpenseEdit(
-                                                            expenseId:
-                                                                selectedEntryId,
-                                                            description:
-                                                                description,
-                                                            totalAmount:
-                                                                totalAmount ??
-                                                                    amount,
-                                                            participantsCount:
-                                                                participants,
-                                                          );
-                                                        } else if (value ==
-                                                            'delete_expense') {
-                                                          await _handleExpenseDelete(
-                                                              selectedEntryId,
-                                                              participantsCount:
-                                                                  participants);
-                                                        } else if (value ==
-                                                            'delete_transaction') {
-                                                          await _handleTransactionDelete(
-                                                              selectedEntryId);
-                                                        }
-                                                      },
-                                                      itemBuilder: (context) =>
-                                                          [
-                                                        const PopupMenuItem<
-                                                            String>(
-                                                          value: 'share',
-                                                          child: Row(
-                                                            children: [
-                                                              Icon(
-                                                                  Icons
-                                                                      .share_outlined,
-                                                                  size: 16),
-                                                              SizedBox(
-                                                                  width: 8),
-                                                              Text('Share'),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        if (canEditExpense)
-                                                          const PopupMenuItem<
-                                                              String>(
-                                                            value:
-                                                                'edit_expense',
-                                                            child: Text('Edit'),
-                                                          ),
-                                                        if (canDeleteExpense)
-                                                          const PopupMenuItem<
-                                                              String>(
-                                                            value:
-                                                                'delete_expense',
-                                                            child:
-                                                                Text('Delete'),
-                                                          ),
-                                                        if (canDeleteTransaction)
-                                                          const PopupMenuItem<
-                                                              String>(
-                                                            value:
-                                                                'delete_transaction',
-                                                            child:
-                                                                Text('Delete'),
-                                                          ),
-                                                      ],
-                                                      child: const Padding(
-                                                        padding: EdgeInsets
-                                                            .symmetric(
-                                                                horizontal: 4),
-                                                        child: Icon(
-                                                          Icons.more_vert,
-                                                          size: 16,
-                                                          color: AppColors
-                                                              .textSecondary,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  Text(
-                                                    AppDateUtils.formatDate(
-                                                        date),
-                                                    style: const TextStyle(
-                                                        fontSize: 10,
-                                                        color: AppColors
-                                                            .textSecondary),
-                                                  ),
-                                                ],
+                                              // Divider
+                                              Container(
+                                                height: 1,
+                                                color: accentColor.withValues(alpha: 0.10),
                                               ),
-                                            ),
-                                            Padding(
-                                              padding: const EdgeInsets.all(10),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  if (description
-                                                      .isNotEmpty) ...[
-                                                    Text(
-                                                      description,
-                                                      style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        fontSize: 14,
-                                                        decoration: isDeleted
-                                                            ? TextDecoration
-                                                                .lineThrough
-                                                            : null,
-                                                        color: isDeleted
-                                                            ? AppColors
-                                                                .textSecondary
-                                                            : null,
+                                              // Body
+                                              Padding(
+                                                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    if (description.isNotEmpty) ...[
+                                                      Text(
+                                                        description,
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.w600,
+                                                          fontSize: 14,
+                                                          decoration: isDeleted ? TextDecoration.lineThrough : null,
+                                                          decorationColor: AppColors.textSecondary,
+                                                          color: AppColors.textPrimary,
+                                                        ),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow.ellipsis,
                                                       ),
-                                                      maxLines: 2,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                    const SizedBox(height: 5),
-                                                  ],
-                                                  Text(
-                                                    formatMinorUnits(
-                                                      amount,
-                                                      currencyCode:
-                                                          preferredCurrencyCode,
-                                                    ),
-                                                    style: TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: isDeleted
-                                                          ? AppColors
-                                                              .textSecondary
-                                                          : AppColors
-                                                              .textPrimary,
-                                                      decoration: isDeleted
-                                                          ? TextDecoration
-                                                              .lineThrough
-                                                          : null,
-                                                    ),
-                                                  ),
-                                                  if (isDeleted) ...[
-                                                    const SizedBox(height: 4),
+                                                      const SizedBox(height: 4),
+                                                    ],
                                                     Row(
+                                                      crossAxisAlignment: CrossAxisAlignment.center,
                                                       children: [
-                                                        const Icon(
-                                                            Icons
-                                                                .delete_outline,
-                                                            size: 11,
-                                                            color: AppColors
-                                                                .error),
-                                                        const SizedBox(
-                                                            width: 3),
+                                                        Expanded(
+                                                          child: Text(
+                                                            type == 'expense'
+                                                                ? (isYouPaid ? 'You covered this split' : 'Shared expense')
+                                                                : (isYouPaid ? 'Payment sent' : 'Payment received'),
+                                                            style: const TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.w400,
+                                                              color: AppColors.textSecondary,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 12),
                                                         Text(
-                                                          deletedBy != null
-                                                              ? 'Deleted by $deletedBy'
-                                                              : 'Deleted',
-                                                          style:
-                                                              const TextStyle(
-                                                            fontSize: 11,
-                                                            color:
-                                                                AppColors.error,
-                                                            fontWeight:
-                                                                FontWeight.w500,
+                                                          amountText,
+                                                          style: TextStyle(
+                                                            fontSize: 18,
+                                                            fontWeight: FontWeight.w800,
+                                                            decoration: isDeleted ? TextDecoration.lineThrough : null,
+                                                            decorationColor: AppColors.textSecondary,
+                                                            color: isDeleted ? AppColors.textSecondary : accentColor,
                                                           ),
                                                         ),
                                                       ],
                                                     ),
-                                                  ] else if (updatedBy !=
-                                                      null) ...[
-                                                    const SizedBox(height: 4),
-                                                    Row(
-                                                      children: [
-                                                        const Icon(
-                                                            Icons.edit_outlined,
-                                                            size: 11,
-                                                            color: AppColors
-                                                                .textSecondary),
-                                                        const SizedBox(
-                                                            width: 3),
-                                                        Text(
-                                                          'Edited by $updatedBy',
-                                                          style:
-                                                              const TextStyle(
-                                                            fontSize: 11,
-                                                            color: AppColors
-                                                                .textSecondary,
-                                                            fontWeight:
-                                                                FontWeight.w500,
-                                                          ),
-                                                        ),
-                                                      ],
+                                                    // Footer pills
+                                                    const SizedBox(height: 8),
+                                                    Container(
+                                                      height: 1,
+                                                      color: AppColors.borderLight,
                                                     ),
-                                                  ] else if (isYouPaid &&
-                                                      seenByOther) ...[
-                                                    const SizedBox(height: 4),
-                                                    Row(
+                                                    const SizedBox(height: 8),
+                                                    Wrap(
+                                                      spacing: 5,
+                                                      runSpacing: 4,
                                                       children: [
-                                                        const Icon(
-                                                          Icons
-                                                              .done_all_rounded,
-                                                          size: 11,
-                                                          color:
-                                                              AppColors.success,
+                                                        _buildBubblePill(
+                                                          icon: type == 'expense'
+                                                              ? Icons.person_outline_rounded
+                                                              : (isYouPaid ? Icons.north_east_rounded : Icons.south_west_rounded),
+                                                          label: type == 'expense' ? 'Your share' : (isYouPaid ? 'Sent' : 'Received'),
+                                                          color: isDeleted ? AppColors.textSecondary : accentColor,
                                                         ),
-                                                        const SizedBox(
-                                                            width: 3),
-                                                        Text(
-                                                          _formatSeenLabel(
-                                                              seenAt),
-                                                          style:
-                                                              const TextStyle(
-                                                            fontSize: 11,
-                                                            fontWeight:
-                                                                FontWeight.w500,
-                                                            color: AppColors
-                                                                .success,
-                                                            fontStyle: FontStyle
-                                                                .italic,
+                                                        if (type == 'expense' && totalAmount != null)
+                                                          _buildBubblePill(
+                                                            icon: Icons.account_balance_wallet_outlined,
+                                                            label: 'Total ${formatMinorUnits(totalAmount, currencyCode: preferredCurrencyCode)}',
+                                                            color: AppColors.primary,
                                                           ),
-                                                        ),
+                                                        if (type == 'expense' && participants > 0)
+                                                          _buildBubblePill(
+                                                            icon: Icons.group_outlined,
+                                                            label: '${participants + 1} people',
+                                                            color: AppColors.textSecondary,
+                                                          ),
+                                                        if (metaLabel != null)
+                                                          _buildBubblePill(
+                                                            icon: metaIcon,
+                                                            label: metaLabel,
+                                                            color: metaColor,
+                                                            shrink: true,
+                                                          ),
                                                       ],
                                                     ),
                                                   ],
-                                                ],
+                                                ),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ),
+                                  )
                                   );
                                 },
                               ),
