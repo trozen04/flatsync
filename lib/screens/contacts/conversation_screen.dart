@@ -698,7 +698,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (!mounted) return;
       CustomSnackBar.showOnOverlay(
         overlay,
-        message: NetworkErrorHandler.moneyWrite(),
+        message: NetworkErrorHandler.moneyWrite(e),
         isError: true,
       );
     } finally {
@@ -710,11 +710,20 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (_submitting) return;
     final expenseService = context.read<ExpenseService>();
     final overlay = Overlay.of(context);
-    final toUserId = await _ensureResolvedContactId();
+    final resolvedId = await _ensureResolvedContactId();
     final toPhone = widget.contact.phoneNumber;
 
-    if ((toUserId == null || toUserId.isEmpty) &&
-        (toPhone == null || toPhone.isEmpty)) {
+    // Only use resolvedId as toUserId if it looks like a UUID (registered user)
+    // Pending users have phone number as their _id — send as toPhone instead
+    final isUuid = resolvedId != null &&
+        resolvedId.isNotEmpty &&
+        !resolvedId.startsWith('+') &&
+        RegExp(r'^[0-9a-f-]{36}$').hasMatch(resolvedId);
+
+    final toUserId = isUuid ? resolvedId : null;
+    final effectivePhone = !isUuid ? (toPhone ?? resolvedId) : null;
+
+    if (toUserId == null && (effectivePhone == null || effectivePhone.isEmpty)) {
       CustomSnackBar.showOnOverlay(overlay,
           message: 'Contact phone number is missing', isError: true);
       return;
@@ -726,9 +735,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (mounted) setState(() => _submitting = true);
     try {
       final amount = (input['amountPaise'] as num).toInt();
+      developer.log('[ConversationScreen] createTransaction toUserId=$toUserId toPhone=$effectivePhone amount=$amount');
       await expenseService.createTransaction(
-        toUserId: (toUserId != null && toUserId.isNotEmpty) ? toUserId : null,
-        toPhone: (toUserId == null || toUserId.isEmpty) ? toPhone : null,
+        toUserId: toUserId,
+        toPhone: effectivePhone,
         amount: amount,
       );
       _interstitialAd.onExpenseAdded();
@@ -738,7 +748,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (!mounted) return;
       CustomSnackBar.showOnOverlay(
         overlay,
-        message: NetworkErrorHandler.moneyWrite(),
+        message: NetworkErrorHandler.message(e, fallback: 'Failed to add transaction'),
         isError: true,
       );
     } finally {

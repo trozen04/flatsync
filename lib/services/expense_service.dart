@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_config.dart';
@@ -16,19 +15,16 @@ import '../utils/phone_utils.dart';
 class ExpenseService {
   final ApiService _api;
   final IsarService _isarService;
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   static const Duration _cacheTtl = Duration(seconds: 20);
   static const String _balancesStorageKey = 'offline_cached_balances_v1';
   static const String _recentAmountsStorageKey = 'recent_amounts_paise_v1';
-  static const String _transactionsStorageKey =
-      'offline_cached_transactions_v1';
+  static const String _transactionsStorageKey = 'offline_cached_transactions_v1';
   static const int _maxRecentAmounts = 8;
   static const int _maxConversationCacheEntries = 24;
   static const int _maxTimelineCacheEntries = 24;
 
-  final StreamController<int> _updatesController =
-      StreamController<int>.broadcast();
+  final StreamController<int> _updatesController = StreamController<int>.broadcast();
   int _revision = 0;
 
   List<ExpenseModel>? _expensesCache;
@@ -55,15 +51,8 @@ class ExpenseService {
 
   Stream<int> get updates => _updatesController.stream;
 
-  void _logBalanceUser(String source, Map<String, dynamic> user, num amount,
-      {int? index}) {}
-
   Future<SharedPreferences> _ensurePrefs() async {
     return _prefs ??= await SharedPreferences.getInstance();
-  }
-
-  Future<String?> _currentUserId() async {
-    return _secureStorage.read(key: 'user_id');
   }
 
   String _canonicalPhone(String value) => PhoneUtils.canonical(value);
@@ -122,21 +111,13 @@ class ExpenseService {
   void _storeConversationCache(String key, List<dynamic> items) {
     _conversationCache[key] = List<dynamic>.unmodifiable(items);
     _conversationCacheAt[key] = DateTime.now();
-    _evictTimedCacheEntries(
-      _conversationCache,
-      _conversationCacheAt,
-      _maxConversationCacheEntries,
-    );
+    _evictTimedCacheEntries(_conversationCache, _conversationCacheAt, _maxConversationCacheEntries);
   }
 
   void _storeTimelineCache(String key, List<Map<String, dynamic>> items) {
     _timelineCache[key] = List<Map<String, dynamic>>.unmodifiable(items);
     _timelineCacheAt[key] = DateTime.now();
-    _evictTimedCacheEntries(
-      _timelineCache,
-      _timelineCacheAt,
-      _maxTimelineCacheEntries,
-    );
+    _evictTimedCacheEntries(_timelineCache, _timelineCacheAt, _maxTimelineCacheEntries);
   }
 
   List<ContactModel> getCachedBalanceContacts() {
@@ -160,7 +141,6 @@ class ExpenseService {
       if (raw == null || raw.isEmpty) return {};
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return {};
-
       final normalized = <String, int>{};
       decoded.forEach((key, value) {
         normalized[key.toString()] = (value as num?)?.round() ?? 0;
@@ -177,13 +157,10 @@ class ExpenseService {
     if (amountInPaise <= 0) return;
     try {
       final prefs = await _ensurePrefs();
-      final existing =
-          prefs.getStringList(_recentAmountsStorageKey) ?? <String>[];
-      final filtered =
-          existing.where((v) => v != amountInPaise.toString()).toList();
+      final existing = prefs.getStringList(_recentAmountsStorageKey) ?? <String>[];
+      final filtered = existing.where((v) => v != amountInPaise.toString()).toList();
       final updated = <String>[amountInPaise.toString(), ...filtered];
-      final limited = updated.take(_maxRecentAmounts).toList();
-      await prefs.setStringList(_recentAmountsStorageKey, limited);
+      await prefs.setStringList(_recentAmountsStorageKey, updated.take(_maxRecentAmounts).toList());
     } catch (e) {
       developer.log('Persist recent amount error: $e');
     }
@@ -192,8 +169,7 @@ class ExpenseService {
   Future<void> _persistTransactions(List<TransactionModel> transactions) async {
     try {
       final prefs = await _ensurePrefs();
-      final rows =
-          _dedupeTransactions(transactions).map((t) => t.toJson()).toList();
+      final rows = _dedupeTransactions(transactions).map((t) => t.toJson()).toList();
       await prefs.setString(_transactionsStorageKey, jsonEncode(rows));
     } catch (e) {
       developer.log('Persist transactions cache error: $e');
@@ -207,7 +183,6 @@ class ExpenseService {
       if (raw == null || raw.isEmpty) return [];
       final decoded = jsonDecode(raw);
       if (decoded is! List) return [];
-
       return decoded
           .whereType<Map<String, dynamic>>()
           .map((e) => TransactionModel(
@@ -216,12 +191,8 @@ class ExpenseService {
                 toUserId: (e['toUserId'] as String?) ?? '',
                 toPhone: (e['toPhone'] as String?)?.trim(),
                 amount: (e['amount'] as num?)?.toInt() ?? 0,
-                createdAt:
-                    DateTime.tryParse((e['createdAt'] as String?) ?? '') ??
-                        DateTime.now().toUtc(),
-                updatedAt:
-                    DateTime.tryParse((e['updatedAt'] as String?) ?? '') ??
-                        DateTime.now().toUtc(),
+                createdAt: DateTime.tryParse((e['createdAt'] as String?) ?? '') ?? DateTime.now().toUtc(),
+                updatedAt: DateTime.tryParse((e['updatedAt'] as String?) ?? '') ?? DateTime.now().toUtc(),
                 relatedExpenseId: e['relatedExpenseId'] as String?,
                 isDeleted: e['isDeleted'] as bool? ?? false,
                 deletedBy: (e['deletedBy'] as String?)?.trim(),
@@ -244,23 +215,28 @@ class ExpenseService {
         map[key] = tx;
       }
     }
-    final list = map.values.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return list;
+    return map.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   Future<List<int>> getRecentAmounts() async {
     try {
       final prefs = await _ensurePrefs();
-      final stored =
-          prefs.getStringList(_recentAmountsStorageKey) ?? <String>[];
-      return stored
-          .map((e) => int.tryParse(e) ?? 0)
-          .where((e) => e > 0)
-          .toList();
+      final stored = prefs.getStringList(_recentAmountsStorageKey) ?? <String>[];
+      return stored.map((e) => int.tryParse(e) ?? 0).where((e) => e > 0).toList();
     } catch (_) {
       return [];
     }
+  }
+
+  void clearAllCaches() => _invalidateCaches();
+
+  Future<void> clearPersistedCaches() async {
+    try {
+      final prefs = await _ensurePrefs();
+      await prefs.remove(_balancesStorageKey);
+      await prefs.remove(_transactionsStorageKey);
+      await prefs.remove(_recentAmountsStorageKey);
+    } catch (_) {}
   }
 
   Future<ExpenseModel> createExpense({
@@ -269,7 +245,6 @@ class ExpenseService {
     required List<String> participants,
     String category = 'other',
   }) async {
-    // Send phone as-is to backend — full +countrycode format if available
     final resolvedParticipants = participants
         .map((p) => PhoneUtils.normalizeRaw(p))
         .where((p) => p.isNotEmpty)
@@ -284,12 +259,9 @@ class ExpenseService {
         'category': category,
       },
     );
-
-    final model =
-        ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
+    final model = ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
     await _isarService.upsertExpense(model);
     await _storeRecentAmount(totalAmount);
-
     _invalidateCaches();
     _emitUpdate();
     return model;
@@ -309,8 +281,8 @@ class ExpenseService {
           _expensesCacheAt = DateTime.now();
           return local;
         }
-      } catch (dbError) {
-        developer.log('Read local expenses (pre-network) error: $dbError');
+      } catch (e) {
+        developer.log('Read local expenses error: $e');
       }
     }
 
@@ -335,10 +307,7 @@ class ExpenseService {
           _expensesCacheAt = DateTime.now();
           return local;
         }
-      } catch (dbError) {
-        developer.log('Read local expenses cache error: $dbError');
-      }
-
+      } catch (_) {}
       if (_expensesCache != null) return _expensesCache!;
       rethrow;
     }
@@ -358,8 +327,7 @@ class ExpenseService {
         if (category != null) 'category': category,
       },
     );
-    final model =
-        ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
+    final model = ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
     await _isarService.upsertExpense(model);
     _invalidateCaches();
     _emitUpdate();
@@ -370,8 +338,7 @@ class ExpenseService {
     final response = await _api.delete('${ApiConfig.expenses}/$expenseId');
     final data = response.data['data'];
     if (data is Map<String, dynamic>) {
-      final model = ExpenseModel.fromJson(data);
-      await _isarService.upsertExpense(model);
+      await _isarService.upsertExpense(ExpenseModel.fromJson(data));
     }
     _invalidateCaches();
     _emitUpdate();
@@ -382,8 +349,7 @@ class ExpenseService {
     String? toPhone,
     required int amount,
   }) async {
-    assert(toUserId != null || toPhone != null,
-        'Either toUserId or toPhone required');
+    assert(toUserId != null || toPhone != null, 'Either toUserId or toPhone required');
     final response = await _api.post(
       ApiConfig.transactions,
       data: {
@@ -392,68 +358,56 @@ class ExpenseService {
         'amount': amount,
       },
     );
-
     final data = response.data['data'];
     if (data is Map<String, dynamic>) {
       final transaction = TransactionModel.fromJson(data);
-      final existing =
-          List<TransactionModel>.from(_transactionsCache ?? const []);
+      final existing = List<TransactionModel>.from(_transactionsCache ?? const []);
       existing.removeWhere((t) => t.transactionId == transaction.transactionId);
       existing.insert(0, transaction);
       _transactionsCache = existing;
       _transactionsCacheAt = DateTime.now();
       unawaited(_persistTransactions(existing));
     }
-
     await _storeRecentAmount(amount);
     _invalidateCaches();
     _emitUpdate();
   }
 
   Future<void> deleteTransaction(String transactionId) async {
-    final response =
-        await _api.delete(ApiConfig.transactionById(transactionId));
+    final response = await _api.delete(ApiConfig.transactionById(transactionId));
     final data = response.data['data'];
-
-    final existing =
-        List<TransactionModel>.from(_transactionsCache ?? const []);
+    final existing = List<TransactionModel>.from(_transactionsCache ?? const []);
     if (data is Map<String, dynamic>) {
       final updated = TransactionModel.fromJson(data);
       existing.removeWhere((t) => t.transactionId == updated.transactionId);
       existing.insert(0, updated);
     } else {
-      final index =
-          existing.indexWhere((t) => t.transactionId == transactionId);
+      final index = existing.indexWhere((t) => t.transactionId == transactionId);
       if (index != -1) {
-        final previous = existing[index];
+        final prev = existing[index];
         existing[index] = TransactionModel(
-          transactionId: previous.transactionId,
-          fromUserId: previous.fromUserId,
-          toUserId: previous.toUserId,
-          toPhone: previous.toPhone,
-          amount: previous.amount,
-          createdAt: previous.createdAt,
+          transactionId: prev.transactionId,
+          fromUserId: prev.fromUserId,
+          toUserId: prev.toUserId,
+          toPhone: prev.toPhone,
+          amount: prev.amount,
+          createdAt: prev.createdAt,
           updatedAt: DateTime.now().toUtc(),
-          relatedExpenseId: previous.relatedExpenseId,
+          relatedExpenseId: prev.relatedExpenseId,
           isDeleted: true,
-          deletedBy: previous.deletedBy,
+          deletedBy: prev.deletedBy,
         );
       }
     }
-
     _transactionsCache = _dedupeTransactions(existing);
     _transactionsCacheAt = DateTime.now();
     unawaited(_persistTransactions(_transactionsCache!));
-
     _invalidateCaches();
     _emitUpdate();
   }
 
-  Future<List<TransactionModel>> getTransactions(
-      {bool forceRefresh = false}) async {
-    if (!forceRefresh &&
-        _transactionsCache != null &&
-        _isFresh(_transactionsCacheAt)) {
+  Future<List<TransactionModel>> getTransactions({bool forceRefresh = false}) async {
+    if (!forceRefresh && _transactionsCache != null && _isFresh(_transactionsCacheAt)) {
       return _transactionsCache!;
     }
 
@@ -470,10 +424,7 @@ class ExpenseService {
     try {
       final response = await _api.get(ApiConfig.transactions);
       final rows = response.data['data'] as List;
-      final parsed = rows
-          .whereType<Map<String, dynamic>>()
-          .map(TransactionModel.fromJson)
-          .toList();
+      final parsed = rows.whereType<Map<String, dynamic>>().map(TransactionModel.fromJson).toList();
       developer.log('[ExpenseService] /transactions response: ${parsed.length} transactions', name: 'ExpenseService');
       developer.log('[ExpenseService] /transactions data: $parsed', name: 'ExpenseService');
       final deduped = _dedupeTransactions(parsed);
@@ -488,7 +439,6 @@ class ExpenseService {
         _transactionsCacheAt = DateTime.now();
         return local;
       }
-
       if (_transactionsCache != null) return _transactionsCache!;
       rethrow;
     }
@@ -500,45 +450,30 @@ class ExpenseService {
     }
 
     if (forceRefresh) {
-      if (_forceRefreshBalancesInFlight != null) {
-        return _forceRefreshBalancesInFlight!;
-      }
-
+      if (_forceRefreshBalancesInFlight != null) return _forceRefreshBalancesInFlight!;
       final future = _fetchBalances(forceRefresh: true);
       _forceRefreshBalancesInFlight = future;
       try {
         return await future;
       } finally {
-        if (identical(_forceRefreshBalancesInFlight, future)) {
-          _forceRefreshBalancesInFlight = null;
-        }
+        if (identical(_forceRefreshBalancesInFlight, future)) _forceRefreshBalancesInFlight = null;
       }
     }
 
-    if (_forceRefreshBalancesInFlight != null) {
-      return _forceRefreshBalancesInFlight!;
-    }
-    if (_balancesInFlight != null) {
-      return _balancesInFlight!;
-    }
+    if (_forceRefreshBalancesInFlight != null) return _forceRefreshBalancesInFlight!;
+    if (_balancesInFlight != null) return _balancesInFlight!;
 
     final future = _fetchBalances(forceRefresh: false);
     _balancesInFlight = future;
     try {
       return await future;
     } finally {
-      if (identical(_balancesInFlight, future)) {
-        _balancesInFlight = null;
-      }
+      if (identical(_balancesInFlight, future)) _balancesInFlight = null;
     }
   }
 
-  Future<Map<String, dynamic>> _fetchBalances({
-    required bool forceRefresh,
-  }) async {
-    // Prefer server truth; keep persisted balances only as an offline fallback.
-    final localFallback =
-        (!forceRefresh) ? await _readPersistedBalances() : <String, dynamic>{};
+  Future<Map<String, dynamic>> _fetchBalances({required bool forceRefresh}) async {
+    final localFallback = (!forceRefresh) ? await _readPersistedBalances() : <String, dynamic>{};
 
     try {
       final response = await _api.get(ApiConfig.balances);
@@ -550,18 +485,13 @@ class ExpenseService {
           final contacts = <ContactModel>[];
 
           final owesMe = (data['owesMe'] as List?) ?? const [];
-          for (var i = 0; i < owesMe.length; i++) {
-            final item = owesMe[i];
+          for (final item in owesMe) {
             if (item is! Map<String, dynamic>) continue;
             final user = item['user'];
             final amount = (item['amount'] as num?) ?? 0;
             if (user is Map<String, dynamic>) {
-              _logBalanceUser('balances.owesMe', user, amount, index: i);
-              try {
-                contacts.add(ContactModel.fromJson(user));
-              } catch (_) {}
-              final key =
-                  (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
+              try { contacts.add(ContactModel.fromJson(user)); } catch (_) {}
+              final key = (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
               if (key != null && key.isNotEmpty) {
                 normalized[key] = (normalized[key] ?? 0) + amount.round();
               }
@@ -569,18 +499,13 @@ class ExpenseService {
           }
 
           final iOwe = (data['iOwe'] as List?) ?? const [];
-          for (var i = 0; i < iOwe.length; i++) {
-            final item = iOwe[i];
+          for (final item in iOwe) {
             if (item is! Map<String, dynamic>) continue;
             final user = item['user'];
             final amount = (item['amount'] as num?) ?? 0;
             if (user is Map<String, dynamic>) {
-              _logBalanceUser('balances.iOwe', user, amount, index: i);
-              try {
-                contacts.add(ContactModel.fromJson(user));
-              } catch (_) {}
-              final key =
-                  (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
+              try { contacts.add(ContactModel.fromJson(user)); } catch (_) {}
+              final key = (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
               if (key != null && key.isNotEmpty) {
                 normalized[key] = (normalized[key] ?? 0) - amount.round();
               }
@@ -591,8 +516,13 @@ class ExpenseService {
           _balancesCache = normalized;
           _balancesCacheAt = DateTime.now();
           unawaited(_persistBalances(normalized));
-
           _balanceContactsCache = contacts;
+
+          // Upsert balance contacts into Isar so they appear in contacts list
+          if (contacts.isNotEmpty) {
+            await _isarService.upsertBalanceContacts(contacts);
+          }
+
           developer.log('[ExpenseService] /balances response: owesMe=${owesMe.length}, iOwe=${iOwe.length}, contacts=${contacts.length}, normalized=${normalized.length} entries', name: 'ExpenseService');
           developer.log('[ExpenseService] /balances data: owesMe=$owesMe, iOwe=$iOwe', name: 'ExpenseService');
           return normalized;
@@ -610,7 +540,6 @@ class ExpenseService {
       return {};
     } catch (e) {
       if (_balancesCache != null) return _balancesCache!;
-
       if (localFallback.isNotEmpty) {
         _balancesCache = localFallback;
         _balancesCacheAt = DateTime.now();
@@ -652,213 +581,6 @@ class ExpenseService {
     );
   }
 
-  Future<List<dynamic>> _localConversationById(
-    String userId, {
-    required int page,
-    required int limit,
-  }) async {
-    final safePage = page < 1 ? 1 : page;
-    final safeLimit = limit < 1 ? 20 : limit;
-    final currentUserId = await _currentUserId();
-
-    final expenses = await getExpenses(forceRefresh: false);
-    final transactions = await getTransactions(forceRefresh: false);
-
-    final timeline = <Map<String, dynamic>>[];
-
-    for (final expense in expenses) {
-      final participantMatch = expense.participants.any(
-          (p) => p == userId || _canonicalPhone(p) == _canonicalPhone(userId));
-      final paidByMatch = expense.paidBy == userId ||
-          _canonicalPhone(expense.paidBy) == _canonicalPhone(userId);
-      if (!participantMatch && !paidByMatch) continue;
-
-      final direction = paidByMatch ? 'they_paid' : 'you_paid';
-      final splitCount = expense.participants.length + 1;
-      final amount =
-          splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
-
-      timeline.add({
-        'type': 'expense',
-        'amount': amount,
-        'signedAmount': direction == 'you_paid' ? amount : -amount,
-        'direction': direction,
-        'description': expense.description ?? 'Expense',
-        'createdAt': expense.createdAt.toUtc().toIso8601String(),
-      });
-    }
-
-    for (final tx in transactions) {
-      final isWithUser = tx.fromUserId == userId || tx.toUserId == userId;
-      if (!isWithUser) continue;
-
-      final sentByMe = currentUserId != null && tx.fromUserId == currentUserId;
-      final direction = sentByMe ? 'sent' : 'received';
-      final signedAmount = sentByMe ? tx.amount : -tx.amount;
-
-      timeline.add({
-        'type': 'transaction',
-        'amount': tx.amount,
-        'signedAmount': signedAmount,
-        'direction': direction,
-        'description': sentByMe ? 'Sent payment' : 'Received payment',
-        'createdAt': tx.createdAt.toUtc().toIso8601String(),
-        'isDeleted': tx.isDeleted,
-        'deletedBy': tx.deletedBy,
-      });
-    }
-
-    timeline.sort(
-      (a, b) => DateTime.parse(b['createdAt'] as String)
-          .compareTo(DateTime.parse(a['createdAt'] as String)),
-    );
-
-    final start = (safePage - 1) * safeLimit;
-    if (start >= timeline.length) return [];
-    final end = (start + safeLimit) > timeline.length
-        ? timeline.length
-        : (start + safeLimit);
-    return timeline.sublist(start, end);
-  }
-
-  Future<List<dynamic>> getConversation(
-    String userId, {
-    bool forceRefresh = false,
-    int page = 1,
-    int limit = 20,
-  }) async {
-    final safePage = page < 1 ? 1 : page;
-    final safeLimit = limit < 1 ? 20 : limit;
-    final cacheKey = 'id:$userId:p$safePage:l$safeLimit';
-    _evictTimedCacheEntries(
-      _conversationCache,
-      _conversationCacheAt,
-      _maxConversationCacheEntries,
-    );
-    if (!forceRefresh &&
-        _conversationCache.containsKey(cacheKey) &&
-        _isFresh(_conversationCacheAt[cacheKey])) {
-      return _conversationCache[cacheKey]!;
-    }
-
-    try {
-      final response = await _api.get(
-        '${ApiConfig.conversations}/$userId?page=$safePage&limit=$safeLimit',
-      );
-      final data = response.data['data'];
-      if (data is! Map<String, dynamic>) {
-        final local = await _localConversationById(userId,
-            page: safePage, limit: safeLimit);
-        _storeConversationCache(cacheKey, local);
-        return local;
-      }
-
-      final items = data['items'] as List? ?? [];
-      final txToPersist = <TransactionModel>[];
-
-      final timeline = items
-          .map((item) {
-            if (item is! Map<String, dynamic>) return <String, dynamic>{};
-
-            final type = item['type'] as String? ?? '';
-            final payload = item['data'] as Map<String, dynamic>? ??
-                const <String, dynamic>{};
-            final createdAt = (item['createdAt'] as String?) ??
-                (payload['createdAt'] as String?) ??
-                DateTime.now().toUtc().toIso8601String();
-
-            final amount = type == 'expense'
-                ? (item['amount'] as num?)?.round() ??
-                    (payload['totalAmount'] as num?)?.round() ??
-                    0
-                : (item['amount'] as num?)?.round() ??
-                    (payload['amount'] as num?)?.round() ??
-                    0;
-
-            final otherId = userId;
-            final expenseCreator = payload['createdBy'];
-            final expenseCreatorId = expenseCreator is Map<String, dynamic>
-                ? expenseCreator['_id'] as String?
-                : null;
-            final fromUser = payload['fromUser'];
-            final fromUserId = fromUser is Map<String, dynamic>
-                ? fromUser['_id'] as String?
-                : null;
-
-            final isFromOther = fromUserId == otherId;
-            final direction = type == 'transaction'
-                ? (isFromOther ? 'received' : 'sent')
-                : (expenseCreatorId == otherId ? 'they_paid' : 'you_paid');
-
-            final signedAmount = type == 'transaction'
-                ? (isFromOther ? -amount : amount)
-                : (expenseCreatorId == otherId ? -amount : amount);
-
-            if (type == 'transaction') {
-              txToPersist.add(TransactionModel.fromJson(payload));
-            }
-
-            String description;
-            if (type == 'transaction') {
-              description = isFromOther ? 'Received payment' : 'Sent payment';
-            } else {
-              description = (payload['description'] as String?) ?? 'Expense';
-            }
-
-            return <String, dynamic>{
-              'type': type,
-              'amount': amount,
-              'signedAmount': signedAmount,
-              'direction': direction,
-              'description': description,
-              'createdAt': createdAt,
-              'isDeleted': payload['isDeleted'] == true,
-              'deletedBy': payload['deletedBy'] is Map<String, dynamic>
-                  ? ((payload['deletedBy']['name'] as String?) ??
-                      (payload['deletedBy']['phoneNumber'] as String?))
-                  : payload['deletedBy'] as String?,
-              'updatedBy': payload['updatedBy'] is Map<String, dynamic>
-                  ? ((payload['updatedBy']['name'] as String?) ??
-                      (payload['updatedBy']['phoneNumber'] as String?))
-                  : payload['updatedBy'] as String?,
-              'expenseId':
-                  type == 'expense' ? (payload['_id'] as String?) : null,
-              'createdBy':
-                  type == 'expense' && expenseCreator is Map<String, dynamic>
-                      ? expenseCreatorId
-                      : null,
-            };
-          })
-          .where((e) => e.isNotEmpty)
-          .toList();
-
-      if (txToPersist.isNotEmpty) {
-        final existing = await getTransactions(forceRefresh: false);
-        final merged = <String, TransactionModel>{
-          for (final t in existing) t.transactionId: t,
-        };
-        for (final t in txToPersist) {
-          merged[t.transactionId] = t;
-        }
-        final updated = _dedupeTransactions(merged.values.toList());
-        _transactionsCache = updated;
-        _transactionsCacheAt = DateTime.now();
-        unawaited(_persistTransactions(updated));
-      }
-
-      _storeConversationCache(cacheKey, timeline);
-      return timeline;
-    } catch (e) {
-      if (_conversationCache.containsKey(cacheKey)) {
-        return _conversationCache[cacheKey]!;
-      }
-      final local = await _localConversationById(userId,
-          page: safePage, limit: safeLimit);
-      _storeConversationCache(cacheKey, local);
-      return local;
-    }
-  }
-
   Future<TimelinePage> getTimeline({
     String? withUserId,
     String? withUserPhone,
@@ -868,42 +590,21 @@ class ExpenseService {
     String? search,
   }) async {
     final safeLimit = limit < 1 ? 20 : limit;
-    final keyUser = (withUserId ?? 'all').trim();
-    final keyPhone = (withUserPhone ?? '').trim();
-    final keyCursor = (cursor ?? '').trim();
-    final keySearch = (search ?? '').trim();
     final cacheKey =
-        'with:$keyUser:p:$keyPhone:c:$keyCursor:l$safeLimit:s:$keySearch';
-    _evictTimedCacheEntries(
-      _timelineCache,
-      _timelineCacheAt,
-      _maxTimelineCacheEntries,
-    );
+        'with:${(withUserId ?? 'all').trim()}:p:${(withUserPhone ?? '').trim()}:c:${(cursor ?? '').trim()}:l$safeLimit:s:${(search ?? '').trim()}';
+    _evictTimedCacheEntries(_timelineCache, _timelineCacheAt, _maxTimelineCacheEntries);
 
-    if (!forceRefresh &&
-        _timelineCache.containsKey(cacheKey) &&
-        _isFresh(_timelineCacheAt[cacheKey])) {
+    if (!forceRefresh && _timelineCache.containsKey(cacheKey) && _isFresh(_timelineCacheAt[cacheKey])) {
       final cached = _timelineCache[cacheKey]!;
-      return TimelinePage(
-          items: cached, nextCursor: null, hasMore: cached.length >= safeLimit);
+      return TimelinePage(items: cached, nextCursor: null, hasMore: cached.length >= safeLimit);
     }
 
     try {
-      final qp = <String, dynamic>{
-        'limit': safeLimit,
-      };
-      if (withUserId != null && withUserId.trim().isNotEmpty) {
-        qp['withUserId'] = withUserId.trim();
-      }
-      if (withUserPhone != null && withUserPhone.trim().isNotEmpty) {
-        qp['withUserPhone'] = withUserPhone.trim();
-      }
-      if (cursor != null && cursor.trim().isNotEmpty) {
-        qp['cursor'] = cursor.trim();
-      }
-      if (search != null && search.trim().isNotEmpty) {
-        qp['search'] = search.trim();
-      }
+      final qp = <String, dynamic>{'limit': safeLimit};
+      if (withUserId != null && withUserId.trim().isNotEmpty) qp['withUserId'] = withUserId.trim();
+      if (withUserPhone != null && withUserPhone.trim().isNotEmpty) qp['withUserPhone'] = withUserPhone.trim();
+      if (cursor != null && cursor.trim().isNotEmpty) qp['cursor'] = cursor.trim();
+      if (search != null && search.trim().isNotEmpty) qp['search'] = search.trim();
 
       final response = await _api.get(ApiConfig.timeline, queryParameters: qp);
       final data = response.data['data'];
@@ -919,39 +620,26 @@ class ExpenseService {
           .cast<Map<String, dynamic>>();
 
       final nextCursor = data['cursor']?.toString();
-      final hasMore = (data['hasMore'] is bool)
-          ? (data['hasMore'] as bool)
-          : parsed.length >= safeLimit;
+      final hasMore = (data['hasMore'] is bool) ? (data['hasMore'] as bool) : parsed.length >= safeLimit;
 
       _storeTimelineCache(cacheKey, parsed);
-      return TimelinePage(
-          items: parsed, nextCursor: nextCursor, hasMore: hasMore);
+      return TimelinePage(items: parsed, nextCursor: nextCursor, hasMore: hasMore);
     } catch (e) {
       if (_timelineCache.containsKey(cacheKey)) {
         final cached = _timelineCache[cacheKey]!;
-        return TimelinePage(
-            items: cached,
-            nextCursor: null,
-            hasMore: cached.length >= safeLimit);
+        return TimelinePage(items: cached, nextCursor: null, hasMore: cached.length >= safeLimit);
       }
       rethrow;
     }
   }
 
-  Future<List<dynamic>> getConversationByPhone(String phoneNumber,
-      {bool forceRefresh = false}) async {
+  Future<List<dynamic>> getConversationByPhone(String phoneNumber, {bool forceRefresh = false}) async {
     final target = _canonicalPhone(phoneNumber);
     if (target.isEmpty) return [];
     final cacheKey = 'phone:$target';
-    _evictTimedCacheEntries(
-      _conversationCache,
-      _conversationCacheAt,
-      _maxConversationCacheEntries,
-    );
+    _evictTimedCacheEntries(_conversationCache, _conversationCacheAt, _maxConversationCacheEntries);
 
-    if (!forceRefresh &&
-        _conversationCache.containsKey(cacheKey) &&
-        _isFresh(_conversationCacheAt[cacheKey])) {
+    if (!forceRefresh && _conversationCache.containsKey(cacheKey) && _isFresh(_conversationCacheAt[cacheKey])) {
       return _conversationCache[cacheKey]!;
     }
 
@@ -960,16 +648,13 @@ class ExpenseService {
     final timeline = <Map<String, dynamic>>[];
 
     for (final expense in expenses) {
-      final participantMatch =
-          expense.participants.any((p) => _canonicalPhone(p) == target);
+      final participantMatch = expense.participants.any((p) => _canonicalPhone(p) == target);
       final paidByMatch = _canonicalPhone(expense.paidBy) == target;
-
       if (!participantMatch && !paidByMatch) continue;
 
       final direction = paidByMatch ? 'they_paid' : 'you_paid';
       final splitCount = expense.participants.length + 1;
-      final amount =
-          splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
+      final amount = splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
 
       timeline.add({
         'type': 'expense',
@@ -983,7 +668,6 @@ class ExpenseService {
 
     for (final tx in transactions) {
       if (_canonicalPhone(tx.toPhone ?? '') != target) continue;
-
       timeline.add({
         'type': 'transaction',
         'amount': tx.amount,
@@ -996,53 +680,11 @@ class ExpenseService {
       });
     }
 
-    timeline.sort(
-      (a, b) => DateTime.parse(b['createdAt'] as String)
-          .compareTo(DateTime.parse(a['createdAt'] as String)),
-    );
+    timeline.sort((a, b) => DateTime.parse(b['createdAt'] as String)
+        .compareTo(DateTime.parse(a['createdAt'] as String)));
 
     _storeConversationCache(cacheKey, timeline);
     return timeline;
-  }
-
-  Future<List<Map<String, dynamic>>> getHistoryItems(
-      {bool forceRefresh = false}) async {
-    final currentUserId = await _currentUserId();
-    final expenses = await getExpenses(forceRefresh: forceRefresh);
-    final transactions = await getTransactions(forceRefresh: forceRefresh);
-
-    final history = <Map<String, dynamic>>[];
-
-    for (final expense in expenses) {
-      history.add({
-        'type': 'expense',
-        'description': expense.description ?? 'Expense',
-        'amount': expense.amount,
-        'paidBy': expense.paidBy,
-        'createdAt': expense.createdAt,
-      });
-    }
-
-    for (final tx in transactions) {
-      final sentByMe = currentUserId != null && tx.fromUserId == currentUserId;
-      final counterparty = sentByMe
-          ? (tx.toUserId.isNotEmpty ? tx.toUserId : (tx.toPhone ?? ''))
-          : tx.fromUserId;
-      history.add({
-        'type': 'transaction',
-        'description': sentByMe ? 'Sent payment' : 'Received payment',
-        'amount': tx.amount,
-        'direction': sentByMe ? 'sent' : 'received',
-        'counterparty': counterparty,
-        'createdAt': tx.createdAt,
-        'isDeleted': tx.isDeleted,
-        'deletedBy': tx.deletedBy,
-      });
-    }
-
-    history.sort((a, b) =>
-        (b['createdAt'] as DateTime).compareTo(a['createdAt'] as DateTime));
-    return history;
   }
 }
 

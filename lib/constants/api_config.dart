@@ -49,9 +49,6 @@ class ApiConfig {
   // Balance endpoints
   static const String balances = '/balances';
 
-  // Conversation endpoints
-  static const String conversations = '/conversations';
-
   // Unified timeline endpoints (used for chat + history)
   static const String timeline = '/timeline';
 }

@@ -18,6 +18,8 @@ import 'package:flatsync/screens/auth/login_screen.dart';
 import 'package:flatsync/constants/app_theme.dart';
 import 'package:flatsync/routes/app_routes.dart';
 import 'package:flatsync/widgets/app_dialog.dart';
+import 'package:flatsync/utils/money_utils.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 final FlutterLocalNotificationsPlugin _localNotifications =
@@ -50,14 +52,29 @@ Future<void> _initLocalNotifications() async {
       ?.createNotificationChannel(channel);
 }
 
-void _showLocalNotification(RemoteMessage message) {
+Future<void> _showLocalNotification(RemoteMessage message) async {
   final notification = message.notification;
   if (notification == null) return;
+
+  // Format amount with user's preferred currency if available
+  String? body = notification.body;
+  final amountStr = message.data['amount'];
+  if (amountStr != null) {
+    final amountInt = int.tryParse(amountStr);
+    if (amountInt != null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final currencyCode = prefs.getString('preferred_currency_code_v1') ?? 'INR';
+        final formatted = formatMinorUnits(amountInt, currencyCode: currencyCode);
+        body = body?.replaceFirst(RegExp(r'\d+\.\d+'), formatted) ?? body;
+      } catch (_) {}
+    }
+  }
 
   _localNotifications.show(
     notification.hashCode,
     notification.title,
-    notification.body,
+    body,
     const NotificationDetails(
       android: AndroidNotificationDetails(
         'flatsync_channel',
@@ -116,8 +133,7 @@ Future<void> main() async {
   final interstitialAdService = InterstitialAdService();
 
   await notificationService.preloadToken();
-  if (appPreferencesService.notificationsEnabled &&
-      await authService.isLoggedIn()) {
+  if (await authService.isLoggedIn()) {
     await notificationService.syncTokenToServer();
   }
 
@@ -126,7 +142,10 @@ Future<void> main() async {
     if (navigator == null) return;
     await _showSessionInvalidatedPopup(navigator, message);
 
-    await authService.logout();
+    await authService.logout(
+      expenseService: expenseService,
+      isar: isarService,
+    );
 
     navigator.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),

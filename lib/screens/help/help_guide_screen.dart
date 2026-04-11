@@ -49,9 +49,6 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
           future: _packageInfoFuture,
           builder: (context, snapshot) {
             final version = snapshot.data?.version ?? 'Loading...';
-            final buildNumber = snapshot.data?.buildNumber ?? '';
-            final fullVersion =
-                buildNumber.isEmpty ? version : '$version+$buildNumber';
 
             return ListView(
               padding: AppDimensions.appMargin(context).copyWith(
@@ -66,7 +63,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                   badges: [
                     HelpBadge(
                       icon: Icons.verified_rounded,
-                      label: 'Version $fullVersion',
+                      label: 'Version $version',
                     ),
                     const HelpBadge(
                       icon: Icons.code_rounded,
@@ -170,7 +167,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Version shown on this device: $fullVersion',
+                        'Version shown on this device: $version',
                         style: AppTextStyles.bodySmall(context).copyWith(
                           color: scheme.onSurfaceVariant,
                         ),

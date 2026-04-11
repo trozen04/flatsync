@@ -259,6 +259,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _balances = normalized;
         _balancesByCanonicalPhone = normalizedByCanonicalPhone;
       });
+      // Reload contacts in case balance sync added new ones
+      unawaited(_loadLocalContacts(reset: true));
     } catch (e) {
       developer.log('Load contact balances error: $e');
     }
@@ -362,44 +364,36 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final isar = context.read<IsarService>();
     final contactService = context.read<ContactService>();
 
-    if (contact.contactId == null || contact.contactId!.isEmpty) {
-      CustomSnackBar.showOnOverlay(overlay,
-          message: 'Cannot remove unregistered contact', isError: true);
-      return false;
-    }
-
     final pin = await AppPinDialog.show(
       context,
       title: 'Remove Contact',
-      subtitle:
-          'Enter your PIN to remove ${contact.name ?? 'this contact'} from your list.',
+      subtitle: 'Enter your PIN to remove ${contact.name ?? 'this contact'} from your list.',
     );
     if (pin == null || pin.isEmpty) return false;
 
     final isValid = await authService.loginOffline(pin);
     if (!isValid) {
       if (mounted) {
-        CustomSnackBar.showOnOverlay(overlay,
-            message: 'Incorrect PIN', isError: true);
+        CustomSnackBar.showOnOverlay(overlay, message: 'Incorrect PIN', isError: true);
       }
       return false;
     }
 
     try {
-      await apiService.delete(ApiConfig.blockContact(contact.contactId!));
+      // Registered user — block on backend so they don't reappear on any device
+      if (contact.contactId != null && contact.contactId!.isNotEmpty) {
+        await apiService.delete(ApiConfig.blockContact(contact.contactId!));
+      }
+      // Always remove locally
       await isar.deleteContact(contact.id);
       contactService.notifyUpdate();
       if (mounted) {
-        CustomSnackBar.showOnOverlay(
-          overlay,
-          message: '${contact.name ?? 'Contact'} removed',
-        );
+        CustomSnackBar.showOnOverlay(overlay, message: '${contact.name ?? 'Contact'} removed');
       }
       return true;
     } catch (e) {
       if (mounted) {
-        CustomSnackBar.showOnOverlay(overlay,
-            message: 'Failed to remove contact', isError: true);
+        CustomSnackBar.showOnOverlay(overlay, message: 'Failed to remove contact', isError: true);
       }
       return false;
     }
@@ -554,7 +548,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
               _buildContactActions(),
               AppDimensions.h10(context),
               Expanded(
-                child: _contacts.isEmpty
+                child: _contacts.isEmpty && _refreshing
+                    ? const Center(child: CircularProgressIndicator())
+                    : _contacts.isEmpty
                     ? buildEmptyState(
                         title: hasSearch
                             ? 'No people match your search'

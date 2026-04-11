@@ -4,10 +4,9 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../constants/app_ads.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_dimensions.dart';
-import 'app_card.dart';
 
 class NativeAdWidget extends StatefulWidget {
-  const NativeAdWidget({super.key, this.height = 120});
+  const NativeAdWidget({super.key, this.height = 320});
 
   final double height;
 
@@ -38,7 +37,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
         },
       ),
       nativeTemplateStyle: NativeTemplateStyle(
-        templateType: TemplateType.small,
+        templateType: TemplateType.medium,
         mainBackgroundColor: AppColors.surface,
         cornerRadius: 16.0,
         callToActionTextStyle: NativeTemplateTextStyle(
@@ -76,10 +75,8 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   Widget build(BuildContext context) {
     if (!_loaded || _ad == null) return const SizedBox.shrink();
 
-    return AppCard(
-      type: AppCardType.elevated,
-      margin: AppDimensions.compactCardMargin(context),
-      padding: EdgeInsets.zero,
+    return Padding(
+      padding: AppDimensions.compactCardMargin(context),
       child: SizedBox(
         width: double.infinity,
         height: widget.height,

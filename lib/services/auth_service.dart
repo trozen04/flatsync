@@ -260,10 +260,16 @@ class AuthService {
     return await _storage.read(key: 'user_id');
   }
 
-  Future<void> logout() async {
+  Future<void> logout({
+    ExpenseService? expenseService,
+    IsarService? isar,
+  }) async {
     await _storage.deleteAll();
     _api.clearToken();
     _api.resetSessionInvalidationState();
+    expenseService?.clearAllCaches();
+    await expenseService?.clearPersistedCaches();
+    await isar?.clearUserData();
   }
 
   Future<void> syncContactsOnLogin({

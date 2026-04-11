@@ -62,7 +62,8 @@ class NetworkErrorHandler {
     return fallback;
   }
 
-  static String moneyWrite() {
+  static String moneyWrite([Object? error]) {
+    if (error != null) return message(error, fallback: moneyWriteMessage);
     return moneyWriteMessage;
   }
 

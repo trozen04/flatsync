@@ -98,13 +98,19 @@ class _AppShellState extends State<AppShell> {
 
       // Clear Isar database
       final isar = context.read<IsarService>();
+      final expenseService = context.read<ExpenseService>();
       final notificationService = context.read<NotificationService>();
       final preferences = context.read<AppPreferencesService>();
       final auth = context.read<AuthService>();
       final navigator = Navigator.of(context);
-      await isar.isar.writeTxn(() async {
-        await isar.isar.clear();
-      });
+
+      // Clear in-memory caches first
+      expenseService.clearAllCaches();
+
+      await isar.clearUserData();
+
+      // Clear persisted offline caches
+      await expenseService.clearPersistedCaches();
 
       // Logout from auth service
       await notificationService.unregisterDevice();

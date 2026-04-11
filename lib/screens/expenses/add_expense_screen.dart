@@ -267,7 +267,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (!mounted) return;
       CustomSnackBar.showOnOverlay(
         overlay,
-        message: NetworkErrorHandler.moneyWrite(),
+        message: NetworkErrorHandler.moneyWrite(e),
         isError: true,
       );
     } finally {

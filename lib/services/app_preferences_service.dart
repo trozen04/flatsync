@@ -100,22 +100,12 @@ class AppPreferencesService extends ChangeNotifier {
     final prefs = _prefs ?? await SharedPreferences.getInstance();
     _prefs = prefs;
 
-    final biometricValue = preserveBiometric ? _biometricEnabled : false;
-    final notificationPromptValue = _notificationPromptSeen;
-
-    await prefs.clear();
-
-    if (preserveBiometric && biometricValue) {
-      await prefs.setBool(_biometricEnabledKey, true);
-    }
-    if (notificationPromptValue) {
-      await prefs.setBool(_notificationPromptSeenKey, true);
-    }
+    // Only remove user-specific data, preserve device-level settings
+    await prefs.remove(_notificationsEnabledKey);
+    await prefs.remove(_currencyManuallySelectedKey);
 
     _preferredCurrencyCode = AppCurrencies.defaultCode;
-    _biometricEnabled = preserveBiometric ? biometricValue : false;
     _currencyManuallySelected = false;
-    _notificationPromptSeen = notificationPromptValue;
     _notificationsEnabled = false;
     notifyListeners();
   }

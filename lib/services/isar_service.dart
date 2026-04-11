@@ -26,53 +26,13 @@ class IsarService {
     );
   }
 
-  Future<void> addExpense(ExpenseModel expense) async {
-    await isar.writeTxn(() async {
-      await isar.expenseModels.put(expense);
-    });
-  }
-
   Future<List<ExpenseModel>> getAllExpenses() async {
     return await isar.expenseModels.where().findAll();
-  }
-
-  Future<ExpenseModel?> getExpenseByUuid(String uuid) async {
-    return await isar.expenseModels.where().uuidEqualTo(uuid).findFirst();
-  }
-
-  Future<void> updateExpense(ExpenseModel expense) async {
-    await isar.writeTxn(() async {
-      await isar.expenseModels.put(expense);
-    });
-  }
-
-  Future<void> softDeleteExpense(String uuid) async {
-    await isar.writeTxn(() async {
-      final expense = await isar.expenseModels.where().uuidEqualTo(uuid).findFirst();
-      if (expense != null) {
-        expense.isDeleted = true;
-        expense.deletedAt = DateTime.now().toUtc();
-        expense.lastModifiedAt = DateTime.now().toUtc();
-        await isar.expenseModels.put(expense);
-      }
-    });
-  }
-
-  Future<List<ExpenseModel>> getActiveExpenses() async {
-    return await isar.expenseModels.filter().isDeletedEqualTo(false).findAll();
-  }
-
-  Future<List<ExpenseModel>> getExpensesModifiedAfter(DateTime timestamp) async {
-    return await isar.expenseModels
-      .filter()
-      .lastModifiedAtGreaterThan(timestamp)
-      .findAll();
   }
 
   Future<void> upsertExpense(ExpenseModel expense) async {
     await isar.writeTxn(() async {
       final existing = await isar.expenseModels.where().uuidEqualTo(expense.uuid).findFirst();
-      
       if (existing != null) {
         if (!expense.lastModifiedAt.isBefore(existing.lastModifiedAt)) {
           expense.id = existing.id;
@@ -88,7 +48,6 @@ class IsarService {
     await isar.writeTxn(() async {
       for (final expense in expenses) {
         final existing = await isar.expenseModels.where().uuidEqualTo(expense.uuid).findFirst();
-        
         if (existing != null) {
           if (!expense.lastModifiedAt.isBefore(existing.lastModifiedAt)) {
             expense.id = existing.id;
@@ -98,12 +57,6 @@ class IsarService {
           await isar.expenseModels.put(expense);
         }
       }
-    });
-  }
-
-  Future<void> clearAllExpenses() async {
-    await isar.writeTxn(() async {
-      await isar.expenseModels.clear();
     });
   }
 
@@ -172,5 +125,46 @@ class IsarService {
       await isar.contactModels.delete(isarId);
     });
   }
-}
 
+  Future<void> clearUserData() async {
+    await isar.writeTxn(() async {
+      await isar.expenseModels.clear();
+      await isar.contactModels.clear();
+      await isar.userModels.clear();
+    });
+  }
+
+  Future<void> removeContactsNotInBalances(Set<String> activeIds) async {
+    final all = await isar.contactModels.filter().idGreaterThan(-1).findAll();
+    final toDelete = all
+        .where((c) =>
+            c.contactId != null &&
+            c.contactId!.isNotEmpty &&
+            !activeIds.contains(c.contactId))
+        .map((c) => c.id)
+        .toList();
+    if (toDelete.isEmpty) return;
+    await isar.writeTxn(() async {
+      await isar.contactModels.deleteAll(toDelete);
+    });
+  }
+
+  // Upsert contacts from balance response — adds missing, updates existing
+  Future<void> upsertBalanceContacts(List<ContactModel> contacts) async {
+    if (contacts.isEmpty) return;
+    await isar.writeTxn(() async {
+      for (final contact in contacts) {
+        final phone = contact.phoneNumber;
+        if (phone == null || phone.isEmpty) continue;
+        final existing = await isar.contactModels
+            .filter()
+            .phoneNumberEqualTo(phone)
+            .findFirst();
+        if (existing == null) {
+          contact.updatedAt = DateTime.now();
+          await isar.contactModels.put(contact);
+        }
+      }
+    });
+  }
+}

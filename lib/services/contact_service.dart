@@ -15,13 +15,8 @@ class ContactService {
       StreamController<int>.broadcast();
   int _revision = 0;
   DateTime? _lookupBackoffUntil;
-  DateTime? _autoSyncBackoffUntil;
-  DateTime? _lastAutoSyncAt;
 
   ContactService(this._api);
-
-  void _logResponseUser(String source, Map<String, dynamic> user,
-      {int? index}) {}
 
   Stream<int> get updates => _updatesController.stream;
 
@@ -36,84 +31,11 @@ class ContactService {
     _updatesController.close();
   }
 
-  Future<void> autoSyncFromBalances(
-      Map<String, dynamic> balances, IsarService isar) async {
-    if (balances.isEmpty) return;
-    final now = DateTime.now();
-    if (_autoSyncBackoffUntil != null && now.isBefore(_autoSyncBackoffUntil!))
-      return;
-    if (_lastAutoSyncAt != null &&
-        now.difference(_lastAutoSyncAt!) < const Duration(seconds: 20)) {
-      return;
-    }
-    _lastAutoSyncAt = now;
-
-    try {
-      // Get balance response which already contains user info
-      final response = await _api.get(ApiConfig.balances);
-      final data = response.data['data'];
-
-      if (data is! Map<String, dynamic>) return;
-
-      final contacts = <ContactModel>[];
-
-      // Extract from owesMe
-      final owesMe = (data['owesMe'] as List?) ?? [];
-      for (var i = 0; i < owesMe.length; i++) {
-        final item = owesMe[i];
-        if (item is! Map<String, dynamic>) continue;
-        final user = item['user'];
-        if (user is Map<String, dynamic>) {
-          try {
-            _logResponseUser('balances.owesMe', user, index: i);
-            contacts.add(ContactModel.fromJson(user));
-          } catch (e) {
-            developer.log('Failed to parse user from owesMe: $e');
-          }
-        }
-      }
-
-      // Extract from iOwe
-      final iOwe = (data['iOwe'] as List?) ?? [];
-      for (var i = 0; i < iOwe.length; i++) {
-        final item = iOwe[i];
-        if (item is! Map<String, dynamic>) continue;
-        final user = item['user'];
-        if (user is Map<String, dynamic>) {
-          try {
-            _logResponseUser('balances.iOwe', user, index: i);
-            contacts.add(ContactModel.fromJson(user));
-          } catch (e) {
-            developer.log('Failed to parse user from iOwe: $e');
-          }
-        }
-      }
-
-      if (contacts.isNotEmpty) {
-        await upsertContactsByCanonical(isar, contacts);
-        notifyUpdate();
-        developer.log('ContactService: auto-synced ${contacts.length} contacts from balances');
-      }
-    } catch (e) {
-      final msg = e.toString().toLowerCase();
-      if (msg.contains('429')) {
-        _autoSyncBackoffUntil = DateTime.now().add(const Duration(minutes: 2));
-        return;
-      }
-      if (_isNetworkIssue(e)) {
-        _autoSyncBackoffUntil = DateTime.now().add(const Duration(seconds: 45));
-        return;
-      }
-      developer.log('Auto-sync contacts error: $e');
-    }
-  }
-
   Future<bool> requestContactsPermission() async {
     final status = await Permission.contacts.request();
     return status.isGranted;
   }
 
-  String _normalizePhone(String phone) => PhoneUtils.normalizeRaw(phone);
   String _canonicalPhone(String phone) => PhoneUtils.canonical(phone);
   bool _looksLikePhoneName(String? value) =>
       PhoneUtils.looksLikePhoneName(value);
@@ -209,8 +131,9 @@ class ContactService {
 
         final existingContact = existingByCanonical[key];
         if (existingContact == null) {
-          if (raw.name == null || raw.name!.trim().isEmpty)
+          if (raw.name == null || raw.name!.trim().isEmpty) {
             raw.name = raw.phoneNumber;
+          }
           raw.updatedAt = DateTime.now();
           await isar.isar.contactModels.put(raw);
           existingByCanonical[key] = raw;
@@ -259,7 +182,7 @@ class ContactService {
       final data = response.data['data'];
       if (data != null) {
         final user = data as Map<String, dynamic>;
-        developer.log('[ContactService] /users/search found: id=${user['_id']}, name=${user['name']}, phone=${user['phoneNumber']}, registered=${user['isRegistered']}', name: 'ContactService');
+        developer.log('[ContactService] /users/search found: id=${user['_id']}, name=${user['name']}, phone=${user['phoneNumber']}, status=${user['accountStatus']}', name: 'ContactService');
         return ContactModel.fromJson(user);
       }
       developer.log('[ContactService] /users/search: no user found for $searchPhone', name: 'ContactService');
@@ -313,9 +236,9 @@ class ContactService {
       developer.log('[ContactService] POST /contacts/match: sent=${payload.length}, registered=${matchedUsers.length}', name: 'ContactService');
       final models = <ContactModel>[];
       for (var i = 0; i < matchedUsers.length; i++) {
-        final json = matchedUsers[i] as Map<String, dynamic>;
+        final json = matchedUsers[i];
         if (json is! Map<String, dynamic>) continue;
-        developer.log('[ContactService] matched[$i]: id=${json['_id']}, name=${json['name']}, phone=${json['phoneNumber']}', name: 'ContactService');
+        developer.log('[ContactService] matched[$i]: id=${json['_id']}, name=${json['name']}, phone=${json['phoneNumber']}, status=${json['accountStatus']}', name: 'ContactService');
         final model = ContactModel.fromJson(json);
         // Backend returns full +countrycode number — preserve it
         final canonicalPhone = _canonicalPhone(model.phoneNumber ?? '');

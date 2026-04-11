@@ -8,7 +8,6 @@ import '../auth/biometric_gate_screen.dart';
 import '../auth/login_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../shell/app_shell.dart';
-import '../../constants/app_colors.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_preferences_service.dart';
 import '../../utils/image_assets.dart';

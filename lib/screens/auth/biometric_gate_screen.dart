@@ -5,6 +5,7 @@ import '../../constants/app_dimensions.dart';
 import '../../services/app_preferences_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/biometric_auth_service.dart';
+import '../../services/expense_service.dart';
 import '../../services/isar_service.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/custom_button.dart';
@@ -70,13 +71,14 @@ class _BiometricGateScreenState extends State<BiometricGateScreen> {
 
   Future<void> _logout() async {
     final isar = context.read<IsarService>();
+    final expenseService = context.read<ExpenseService>();
     final notificationService = context.read<NotificationService>();
     final preferences = context.read<AppPreferencesService>();
     final auth = context.read<AuthService>();
     final navigator = Navigator.of(context);
-    await isar.isar.writeTxn(() async {
-      await isar.isar.clear();
-    });
+    expenseService.clearAllCaches();
+    await isar.clearUserData();
+    await expenseService.clearPersistedCaches();
     await notificationService.unregisterDevice();
     await preferences.resetForLogout();
     await auth.logout();
