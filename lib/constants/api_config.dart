@@ -37,6 +37,7 @@ class ApiConfig {
 
   // Contact endpoints
   static const String matchContacts = '/contacts/match';
+  static String blockContact(String userId) => '/contacts/block/$userId';
 
   static const String expenses = '/expenses';
   static String expenseById(String id) => '/expenses/$id';

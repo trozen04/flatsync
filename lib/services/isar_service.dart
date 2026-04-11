@@ -166,5 +166,11 @@ class IsarService {
   Future<void> close() async {
     await isar.close();
   }
+
+  Future<void> deleteContact(int isarId) async {
+    await isar.writeTxn(() async {
+      await isar.contactModels.delete(isarId);
+    });
+  }
 }
 

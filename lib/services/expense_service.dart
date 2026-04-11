@@ -56,14 +56,7 @@ class ExpenseService {
   Stream<int> get updates => _updatesController.stream;
 
   void _logBalanceUser(String source, Map<String, dynamic> user, num amount,
-      {int? index}) {
-    final id = user['_id'] ?? user['id'];
-    final phone = user['phoneNumber'];
-    final name = user['name'];
-    final suffix = index == null ? '' : '[$index]';
-    developer.log(
-        '$source$suffix user -> id=$id, phone=$phone, name=$name, amount=$amount');
-  }
+      {int? index}) {}
 
   Future<SharedPreferences> _ensurePrefs() async {
     return _prefs ??= await SharedPreferences.getInstance();
@@ -281,8 +274,7 @@ class ExpenseService {
         .map((p) => PhoneUtils.normalizeRaw(p))
         .where((p) => p.isNotEmpty)
         .toList();
-    developer.log(
-        'Creating expense: desc=$description, amount=$totalAmount, category=$category, participants=$resolvedParticipants');
+    developer.log('ExpenseService: creating expense "$description" amount=$totalAmount participants=${resolvedParticipants.length}');
     final response = await _api.post(
       ApiConfig.expenses,
       data: {
@@ -328,7 +320,8 @@ class ExpenseService {
       final parsed = expenses
           .map((json) => ExpenseModel.fromJson(json as Map<String, dynamic>))
           .toList();
-
+      developer.log('[ExpenseService] /expenses response: ${parsed.length} expenses', name: 'ExpenseService');
+      developer.log('[ExpenseService] /expenses data: $parsed', name: 'ExpenseService');
       await _isarService.batchUpsertExpenses(parsed);
       _expensesCache = parsed;
       _expensesCacheAt = DateTime.now();
@@ -481,7 +474,8 @@ class ExpenseService {
           .whereType<Map<String, dynamic>>()
           .map(TransactionModel.fromJson)
           .toList();
-
+      developer.log('[ExpenseService] /transactions response: ${parsed.length} transactions', name: 'ExpenseService');
+      developer.log('[ExpenseService] /transactions data: $parsed', name: 'ExpenseService');
       final deduped = _dedupeTransactions(parsed);
       unawaited(_persistTransactions(deduped));
       _transactionsCache = deduped;
@@ -598,9 +592,9 @@ class ExpenseService {
           _balancesCacheAt = DateTime.now();
           unawaited(_persistBalances(normalized));
 
-          // Cache enriched contacts extracted from the same response so callers can sync without an extra API hit.
           _balanceContactsCache = contacts;
-
+          developer.log('[ExpenseService] /balances response: owesMe=${owesMe.length}, iOwe=${iOwe.length}, contacts=${contacts.length}, normalized=${normalized.length} entries', name: 'ExpenseService');
+          developer.log('[ExpenseService] /balances data: owesMe=$owesMe, iOwe=$iOwe', name: 'ExpenseService');
           return normalized;
         }
 

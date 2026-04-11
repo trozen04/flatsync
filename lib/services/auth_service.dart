@@ -136,30 +136,19 @@ class AuthService {
 
   Future<Map<String, dynamic>> sendSignupOtp(String phoneNumber) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    developer.log('AuthService: sendSignupOtp request ($normalizedPhone)',
-        name: 'AuthService');
-
     final response = await _api.post(
       ApiConfig.sendOtp,
       data: {'phoneNumber': normalizedPhone},
     );
-
-    developer.log('AuthService: sendSignupOtp response: ${response.data}',
-        name: 'AuthService');
-
     return response.data;
   }
 
   Future<Map<String, dynamic>> sendResetPinOtp(String phoneNumber) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    developer.log('AuthService: sendResetPinOtp request ($normalizedPhone)',
-        name: 'AuthService');
     final response = await _api.post(
       ApiConfig.sendResetPinOtp,
       data: {'phoneNumber': normalizedPhone},
     );
-    developer.log('AuthService: sendResetPinOtp response: ${response.data}',
-        name: 'AuthService');
     return response.data;
   }
 
@@ -170,9 +159,6 @@ class AuthService {
     required String pin,
   }) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    developer.log(
-        'AuthService: verifySignupOtp request (phone: $normalizedPhone, name: $name)',
-        name: 'AuthService');
     final response = await _api.post(
       ApiConfig.verifyOtp,
       data: {
@@ -196,9 +182,7 @@ class AuthService {
     await _storage.write(key: 'hashed_pin', value: user.hashedPin);
     _api.resetSessionInvalidationState();
 
-    developer.log(
-        'AuthService: verifySignupOtp success (userId: ${user.userId})',
-        name: 'AuthService');
+    developer.log('AuthService: signup success userId=${user.userId}', name: 'AuthService');
     return user;
   }
 
@@ -207,9 +191,6 @@ class AuthService {
     required String pin,
   }) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    developer.log('AuthService: login request ($normalizedPhone)',
-        name: 'AuthService');
-
     final response = await _api.post(
       ApiConfig.login,
       data: {
@@ -217,9 +198,6 @@ class AuthService {
         'pin': pin,
       },
     );
-
-    developer.log('AuthService: login response: ${response.data}',
-        name: 'AuthService');
 
     final data = response.data['data'];
     final user = UserModel.fromJson(data['user']);
@@ -234,6 +212,7 @@ class AuthService {
     await _storage.write(key: 'hashed_pin', value: user.hashedPin);
     _api.resetSessionInvalidationState();
 
+    developer.log('AuthService: login success userId=${user.userId}', name: 'AuthService');
     return user;
   }
 
@@ -243,8 +222,6 @@ class AuthService {
     required String pin,
   }) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    developer.log('AuthService: verifyResetPinOtp request ($normalizedPhone)',
-        name: 'AuthService');
     await _api.post(
       ApiConfig.verifyResetPinOtp,
       data: {
@@ -253,8 +230,6 @@ class AuthService {
         'pin': pin,
       },
     );
-    developer.log('AuthService: verifyResetPinOtp success',
-        name: 'AuthService');
     await _storage.write(key: 'hashed_pin', value: _hashPin(pin));
   }
 

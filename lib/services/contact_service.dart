@@ -21,13 +21,7 @@ class ContactService {
   ContactService(this._api);
 
   void _logResponseUser(String source, Map<String, dynamic> user,
-      {int? index}) {
-    final id = user['_id'] ?? user['id'];
-    final phone = user['phoneNumber'];
-    final name = user['name'];
-    final suffix = index == null ? '' : '[$index]';
-    developer.log('$source$suffix user -> id=$id, phone=$phone, name=$name');
-  }
+      {int? index}) {}
 
   Stream<int> get updates => _updatesController.stream;
 
@@ -98,7 +92,7 @@ class ContactService {
       if (contacts.isNotEmpty) {
         await upsertContactsByCanonical(isar, contacts);
         notifyUpdate();
-        developer.log('Auto-synced ${contacts.length} contacts from balances');
+        developer.log('ContactService: auto-synced ${contacts.length} contacts from balances');
       }
     } catch (e) {
       final msg = e.toString().toLowerCase();
@@ -145,12 +139,6 @@ class ContactService {
     final incomingHasFreshData = incoming.contactId?.isNotEmpty ?? false;
     final mergedIsRegistered =
         incomingHasFreshData ? incoming.isRegistered : existing.isRegistered;
-
-    developer.log(
-      '_mergeContact: phone=${_canonicalPhone(incoming.phoneNumber ?? existing.phoneNumber ?? '')} '
-      'existing.isRegistered=${existing.isRegistered} incoming.isRegistered=${incoming.isRegistered} '
-      'incomingHasFreshData=$incomingHasFreshData -> merged=$mergedIsRegistered',
-    );
 
     // Prefer full number with + prefix for storage; fall back to whichever is longer
     final existingPhone = existing.phoneNumber ?? '';
@@ -261,18 +249,20 @@ class ContactService {
   }
 
   Future<ContactModel?> addContactByPhone(String phoneNumber) async {
-    // Use full number for search if it has country code, else canonical
     final searchPhone = phoneNumber.startsWith('+')
         ? phoneNumber.trim()
         : _canonicalPhone(phoneNumber);
     if (searchPhone.length < 10 || !canAttemptLookup) return null;
     try {
+      developer.log('[ContactService] GET /users/search?phone=$searchPhone', name: 'ContactService');
       final response = await _api.get('/users/search?phone=$searchPhone');
-      if (response.data['data'] != null) {
-        final user = response.data['data'] as Map<String, dynamic>;
-        _logResponseUser('users.search', user);
+      final data = response.data['data'];
+      if (data != null) {
+        final user = data as Map<String, dynamic>;
+        developer.log('[ContactService] /users/search found: id=${user['_id']}, name=${user['name']}, phone=${user['phoneNumber']}, registered=${user['isRegistered']}', name: 'ContactService');
         return ContactModel.fromJson(user);
       }
+      developer.log('[ContactService] /users/search: no user found for $searchPhone', name: 'ContactService');
       return null;
     } catch (e) {
       if (_isNetworkIssue(e)) {
@@ -284,7 +274,7 @@ class ContactService {
         ]);
         if (users.isNotEmpty) return users.first;
       } catch (_) {}
-      developer.log('Add contact by phone error: $e');
+      developer.log('ContactService: addContactByPhone error: $e');
       return null;
     }
   }
@@ -317,17 +307,15 @@ class ContactService {
       );
 
       final result = response.data['data'];
-      developer.log('matchContactsList raw response: $result');
       final matchedUsers = result is Map<String, dynamic>
           ? (result['registeredUsers'] as List? ?? const [])
           : (result as List? ?? const []);
-      developer.log(
-          'matchContactsList: sent ${payload.length} contacts, got ${matchedUsers.length} registered users back');
+      developer.log('[ContactService] POST /contacts/match: sent=${payload.length}, registered=${matchedUsers.length}', name: 'ContactService');
       final models = <ContactModel>[];
       for (var i = 0; i < matchedUsers.length; i++) {
-        final json = matchedUsers[i];
+        final json = matchedUsers[i] as Map<String, dynamic>;
         if (json is! Map<String, dynamic>) continue;
-        _logResponseUser('contacts.match', json, index: i);
+        developer.log('[ContactService] matched[$i]: id=${json['_id']}, name=${json['name']}, phone=${json['phoneNumber']}', name: 'ContactService');
         final model = ContactModel.fromJson(json);
         // Backend returns full +countrycode number — preserve it
         final canonicalPhone = _canonicalPhone(model.phoneNumber ?? '');
@@ -344,7 +332,7 @@ class ContactService {
       return models;
     } catch (e) {
       if (_isNetworkIssue(e)) _setLookupBackoff();
-      developer.log('Match contacts list error: $e');
+      developer.log('ContactService: matchContactsList error: $e');
       return [];
     }
   }
@@ -353,7 +341,7 @@ class ContactService {
     try {
       // Request permission
       if (!await FlutterContacts.requestPermission()) {
-        developer.log('Contact permission denied');
+        developer.log('ContactService: contact permission denied');
         return [];
       }
 
@@ -363,7 +351,7 @@ class ContactService {
         withPhoto: false,
       );
 
-      developer.log('Found ${deviceContacts.length} device contacts');
+      developer.log('ContactService: ${deviceContacts.length} device contacts found');
 
       // Prepare contacts for backend
       final contactsToMatch = deviceContacts
@@ -375,13 +363,13 @@ class ContactService {
           .toList();
 
       if (contactsToMatch.isEmpty) {
-        developer.log('No contacts with phone numbers');
+        developer.log('ContactService: no contacts with phone numbers');
         return [];
       }
 
       return await matchContactsList(contactsToMatch);
     } catch (e) {
-      developer.log('Match contacts error: $e');
+      developer.log('ContactService: matchContacts error: $e');
       return [];
     }
   }

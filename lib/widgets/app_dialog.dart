@@ -795,6 +795,173 @@ class _AppManualContactDialogState extends State<AppManualContactDialog> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. AppPinDialog
+//    Use for: PIN verification before sensitive actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AppPinDialog extends StatefulWidget {
+  final String title;
+  final String subtitle;
+
+  const AppPinDialog({
+    super.key,
+    required this.title,
+    required this.subtitle,
+  });
+
+  static Future<String?> show(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+  }) =>
+      showDialog<String>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => AppPinDialog(title: title, subtitle: subtitle),
+      );
+
+  @override
+  State<AppPinDialog> createState() => _AppPinDialogState();
+}
+
+class _AppPinDialogState extends State<AppPinDialog> {
+  final TextEditingController _pinController = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _pinController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        decoration: _cardDecoration(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 22),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.07),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.lock_rounded,
+                      size: 26, color: AppColors.error),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+              child: Column(
+                children: [
+                  Text(
+                    widget.title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.subtitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      color: AppColors.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: _pinController,
+                    autofocus: true,
+                    obscureText: _obscure,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'Enter PIN',
+                      counterText: '',
+                      filled: true,
+                      fillColor: const Color(0xFFF8F9FB),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: AppColors.error, width: 1.5),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          size: 20,
+                          color: AppColors.textSecondary,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscure = !_obscure),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _dialogButton(
+                          label: 'Cancel',
+                          onTap: () => Navigator.pop(context),
+                          bg: Colors.transparent,
+                          fg: AppColors.textSecondary,
+                          outlined: true,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _dialogButton(
+                          label: 'Confirm',
+                          onTap: () =>
+                              Navigator.pop(context, _pinController.text),
+                          bg: AppColors.error,
+                          fg: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class AppSessionExpiredDialog extends StatelessWidget {
   final String message;
 

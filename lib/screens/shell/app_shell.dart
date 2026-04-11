@@ -203,7 +203,9 @@ class _AppShellState extends State<AppShell> {
             for (var index = 0; index < _screens.length; index++)
               TickerMode(
                 enabled: _selectedIndex == index,
-                child: _screenFor(index),
+                child: _selectedIndex == index || _screens[index] != null
+                    ? _screenFor(index)
+                    : const SizedBox.shrink(),
               ),
           ],
         ),

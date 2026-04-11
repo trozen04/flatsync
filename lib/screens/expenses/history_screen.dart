@@ -450,8 +450,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           final updatedBy =
                               (item['updatedBy'] as String?)?.trim();
 
-                          developer.log(
-                              '📊 HISTORY ITEM: type=$type, amount=$amountPaise, description=$description');
+                          // developer.log('📊 HISTORY ITEM: type=$type, amount=$amountPaise, description=$description');
 
                           final formattedDate = AppDateUtils.formatDate(date);
                           final formattedTime = AppDateUtils.formatTime(date);

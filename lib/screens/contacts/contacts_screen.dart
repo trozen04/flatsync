@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../constants/api_config.dart';
 import '../../constants/app_dimensions.dart';
 import '../../constants/app_ads.dart';
 import '../../constants/app_colors.dart';
@@ -17,6 +18,8 @@ import '../../widgets/loading_indicator.dart';
 import '../../widgets/native_ad_widget.dart';
 import '../../models/contact_model.dart';
 import '../../services/isar_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_service.dart';
 import '../../services/contact_service.dart';
 import '../../services/expense_service.dart';
 import '../../utils/money_utils.dart';
@@ -70,7 +73,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _scrollController.addListener(_onScroll);
     unawaited(_refreshData(forceRefresh: false));
     _updatesSub = context.read<ExpenseService>().updates.listen((_) {
-      if (mounted) _loadBalances(forceRefresh: true);
+      if (mounted) _loadBalances(forceRefresh: false);
     });
     // Listen to contact updates
     _contactUpdatesSub = context.read<ContactService>().updates.listen((_) {
@@ -163,6 +166,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       if (!mounted) return;
       if (_pendingResetAfterLoad && !reset) return;
       if (requestQuery != _query) return;
+      developer.log('[ContactsScreen] local contacts loaded: ${contacts.length} (offset=$nextOffset, query="$requestQuery")', name: 'ContactsScreen');
       setState(() {
         _contacts = reset ? contacts : [..._contacts, ...contacts];
         _contactsOffset = nextOffset + contacts.length;
@@ -174,7 +178,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           contactService.canAttemptLookup &&
           (_lastReconcileAt == null ||
               DateTime.now().difference(_lastReconcileAt!) >
-                  const Duration(seconds: 30));
+                  const Duration(minutes: 5));
       if (shouldReconcile) {
         _lastReconcileAt = DateTime.now();
         unawaited(_reconcileContactIds(contacts));
@@ -249,6 +253,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           normalizedByCanonicalPhone.putIfAbsent(canonicalPhone, () => amount);
         }
       });
+      developer.log('[ContactsScreen] balances loaded: ${normalized.length} entries, owedToYou=${normalized.values.where((v) => v > 0).fold(0, (a, b) => a + b)}, youOwe=${normalized.values.where((v) => v < 0).fold(0, (a, b) => a + b.abs())}', name: 'ContactsScreen');
       if (!mounted) return;
       setState(() {
         _balances = normalized;
@@ -348,6 +353,56 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
       ],
     );
+  }
+
+  Future<bool?> _confirmDeleteContact(ContactModel contact) async {
+    final overlay = Overlay.of(context);
+    final authService = context.read<AuthService>();
+    final apiService = context.read<ApiService>();
+    final isar = context.read<IsarService>();
+    final contactService = context.read<ContactService>();
+
+    if (contact.contactId == null || contact.contactId!.isEmpty) {
+      CustomSnackBar.showOnOverlay(overlay,
+          message: 'Cannot remove unregistered contact', isError: true);
+      return false;
+    }
+
+    final pin = await AppPinDialog.show(
+      context,
+      title: 'Remove Contact',
+      subtitle:
+          'Enter your PIN to remove ${contact.name ?? 'this contact'} from your list.',
+    );
+    if (pin == null || pin.isEmpty) return false;
+
+    final isValid = await authService.loginOffline(pin);
+    if (!isValid) {
+      if (mounted) {
+        CustomSnackBar.showOnOverlay(overlay,
+            message: 'Incorrect PIN', isError: true);
+      }
+      return false;
+    }
+
+    try {
+      await apiService.delete(ApiConfig.blockContact(contact.contactId!));
+      await isar.deleteContact(contact.id);
+      contactService.notifyUpdate();
+      if (mounted) {
+        CustomSnackBar.showOnOverlay(
+          overlay,
+          message: '${contact.name ?? 'Contact'} removed',
+        );
+      }
+      return true;
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.showOnOverlay(overlay,
+            message: 'Failed to remove contact', isError: true);
+      }
+      return false;
+    }
   }
 
   Future<void> _addManualContact() async {
@@ -550,21 +605,38 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                 ? displayName[0].toUpperCase()
                                 : '?';
 
-                            return AppCard(
-                              type: AppCardType.elevated,
-                              margin: AppDimensions.compactCardMargin(context),
-                              padding:
-                                  AppDimensions.compactCardPadding(context),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        ConversationScreen(contact: contact),
-                                  ),
-                                );
-                              },
-                              child: Row(
+                            return Dismissible(
+                              key: ValueKey(contact.id),
+                              direction: DismissDirection.endToStart,
+                              confirmDismiss: (_) =>
+                                  _confirmDeleteContact(contact),
+                              background: Container(
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 20),
+                                margin: AppDimensions.compactCardMargin(context),
+                                decoration: BoxDecoration(
+                                  color: AppColors.error.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Icon(
+                                  Icons.delete_rounded,
+                                  color: AppColors.error,
+                                ),
+                              ),
+                              child: AppCard(
+                                type: AppCardType.elevated,
+                                margin: AppDimensions.compactCardMargin(context),
+                                padding: AppDimensions.compactCardPadding(context),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          ConversationScreen(contact: contact),
+                                    ),
+                                  );
+                                },
+                                child: Row(
                                 children: [
                                   Container(
                                     width: 44,
@@ -685,6 +757,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   ),
                                 ],
                               ),
+                            ),
                             );
                           },
                         ),

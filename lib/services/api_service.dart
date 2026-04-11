@@ -32,14 +32,14 @@ class ApiService {
           options.headers['Authorization'] = 'Bearer $token';
         }
         developer.log(
-          '[API] --> ${options.method} ${options.baseUrl}${options.path} | body: ${options.data}',
+          '[API] --> ${options.method} ${options.baseUrl}${options.path}',
           name: 'ApiService',
         );
         return handler.next(options);
       },
       onResponse: (response, handler) {
         developer.log(
-          '[API] <-- ${response.statusCode} ${response.requestOptions.method} ${response.requestOptions.path} | body: ${response.data}',
+          '[API] <-- ${response.statusCode} ${response.requestOptions.method} ${response.requestOptions.path}',
           name: 'ApiService',
         );
         return handler.next(response);
@@ -72,12 +72,9 @@ class ApiService {
             return handler.next(error);
           }
 
-          developer.log('[API] 401 received, attempting token refresh...',
-              name: 'ApiService');
+          developer.log('[API] 401 — attempting token refresh', name: 'ApiService');
           final refreshed = await _refreshToken();
           if (refreshed) {
-            developer.log('[API] Token refreshed, retrying request...',
-                name: 'ApiService');
             return handler.resolve(await _dio.fetch(error.requestOptions));
           }
           if (hasAuthHeader || !isAuthEndpoint) {
@@ -93,7 +90,7 @@ class ApiService {
                   : _fallbackSessionInvalidationMessage,
             );
           }
-          developer.log('[API] Token refresh failed', name: 'ApiService');
+          developer.log('[API] Token refresh failed — session invalidated', name: 'ApiService');
         }
         return handler.next(error);
       },
@@ -213,8 +210,7 @@ class ApiService {
 
         final delayMs = attempt == 1 ? 500 : 1500;
         developer.log(
-          '[API] transient GET error on $path, retrying in ${delayMs}ms '
-          '(attempt $attempt/$_maxGetAttempts)',
+          '[API] Transient GET error on $path, retry $attempt/$_maxGetAttempts in ${delayMs}ms',
           name: 'ApiService',
         );
         await Future.delayed(Duration(milliseconds: delayMs));

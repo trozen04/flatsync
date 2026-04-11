@@ -45,7 +45,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _checkForUpdate() async {
     try {
-      final info = await InAppUpdate.checkForUpdate();
+      final info = await InAppUpdate.checkForUpdate()
+          .timeout(const Duration(seconds: 5));
       if (!mounted) return;
       if (info.updateAvailability == UpdateAvailability.updateAvailable) {
         if (info.immediateUpdateAllowed) {
@@ -65,17 +66,18 @@ class _SplashScreenState extends State<SplashScreen>
     final preferences = context.read<AppPreferencesService>();
     final prefs = await SharedPreferences.getInstance();
 
-    final results = await Future.wait([
-      authService.isLoggedIn(),
-      Future.value(prefs.getBool(OnboardingScreen.seenKey) ?? false),
+    final isLoggedIn = await authService
+        .isLoggedIn()
+        .timeout(const Duration(seconds: 5), onTimeout: () => false);
+
+    final hasSeenOnboarding = prefs.getBool(OnboardingScreen.seenKey) ?? false;
+
+    await Future.wait([
       Future.delayed(const Duration(milliseconds: 1800)),
       _checkForUpdate(),
     ]);
 
     if (!mounted) return;
-
-    final isLoggedIn = results[0] as bool;
-    final hasSeenOnboarding = results[1] as bool;
 
     Widget destination;
     if (isLoggedIn) {
