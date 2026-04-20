@@ -51,7 +51,7 @@ class _BiometricGateScreenState extends State<BiometricGateScreen> {
     }
 
     final ok = await biometric.authenticate(
-      reason: 'Authenticate to open SplitEasy',
+      reason: 'Authenticate to open SettleFlow',
     );
 
     if (!mounted) return;
@@ -101,7 +101,7 @@ class _BiometricGateScreenState extends State<BiometricGateScreen> {
               const Icon(Icons.fingerprint, size: 72),
               AppDimensions.h20(context),
               Text(
-                'Unlock SplitEasy',
+                'Unlock SettleFlow',
                 style: Theme.of(context).textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),

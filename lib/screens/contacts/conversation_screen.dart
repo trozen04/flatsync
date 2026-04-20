@@ -670,8 +670,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final phone = widget.contact.phoneNumber;
     final overlay = Overlay.of(context);
     if (phone == null || phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contact phone missing')),
+      CustomSnackBar.showOnOverlay(
+        overlay,
+        message: 'This contact has no phone number.',
+        isError: true,
       );
       return;
     }

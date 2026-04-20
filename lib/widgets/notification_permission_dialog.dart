@@ -154,7 +154,7 @@ Future<bool?> showNotificationPermissionDialog(
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Why FlatSync asks',
+                    'Why SettleFlow asks',
                     style: AppTextStyles.titleMedium(sheetContext).copyWith(
                       fontWeight: FontWeight.w700,
                     ),

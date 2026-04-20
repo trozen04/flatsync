@@ -20,7 +20,7 @@ class TermsScreen extends StatelessWidget {
           children: [
             const HelpHeroCard(
               icon: Icons.description_rounded,
-              title: 'Terms for using SplitEasy',
+              title: 'Terms for using SettleFlow',
               subtitle:
                   'These terms explain how the app should be used and what users are responsible for.',
             ),

@@ -349,7 +349,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               } catch (_) {
                                 messenger.showSnackBar(
                                   const SnackBar(
-                                      content: Text('Export failed')),
+                                      content: Text('Could not export. Please try again.')),
                                 );
                               } finally {
                                 if (mounted) setState(() => _exporting = false);

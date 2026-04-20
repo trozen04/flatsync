@@ -289,7 +289,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (updated == null) {
         CustomSnackBar.showOnOverlay(
           overlay,
-          message: 'Unable to update profile',
+          message: 'Could not update your profile. Please try again.',
           isError: true,
         );
         return false;
@@ -343,7 +343,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final biometric = context.read<BiometricAuthService>();
       if (enabled) {
         final ok = await biometric.authenticate(
-          reason: 'Confirm biometric unlock for SplitEasy',
+          reason: 'Confirm biometric unlock for SettleFlow',
         );
         if (!ok) {
           if (mounted) {
@@ -780,7 +780,7 @@ class _ProfileHeroCard extends StatelessWidget {
           ),
           AppDimensions.h10(context),
           Text(
-            'A compact view of your SplitEasy profile.',
+            'A compact view of your SettleFlow profile.',
             style: AppTextStyles.bodySmall(context).copyWith(
               color: Colors.white.withValues(alpha: 0.84),
             ),

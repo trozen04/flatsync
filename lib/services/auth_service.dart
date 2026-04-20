@@ -60,7 +60,7 @@ class AuthService {
     if (NetworkErrorHandler.isNetworkIssue(error)) {
       return NetworkErrorHandler.message(
         error,
-        fallback: 'Oops! Something went wrong',
+        fallback: 'Something went wrong. Please try again.',
       );
     }
 

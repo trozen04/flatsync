@@ -42,7 +42,7 @@ Future<void> _initLocalNotifications() async {
   // Create notification channel for Android
   const channel = AndroidNotificationChannel(
     'flatsync_channel',
-    'FlatSync Notifications',
+    'SettleFlow Notifications',
     description: 'Expense and transaction alerts',
     importance: Importance.high,
   );
@@ -180,7 +180,7 @@ class FlatSyncApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SplitEasy',
+      title: 'SettleFlow',
       navigatorKey: _rootNavigatorKey,
       theme: AppTheme.lightTheme,
       themeMode: ThemeMode.light,

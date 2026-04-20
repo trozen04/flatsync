@@ -12,7 +12,7 @@ class ApiConfig {
       'https://flatsyncbackend-production.up.railway.app/api';
 
   /// Development URL - Use your computer's IP address
-  static const String developmentUrl = 'http://192.168.1.46:5000/api';
+  static const String developmentUrl = 'http://192.168.1.42:5000/api';
 
   // Auto-select based on build mode
   static String get baseUrl => baseUrlOverride.isNotEmpty

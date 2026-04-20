@@ -33,12 +33,12 @@ class ExportUtils {
     try {
       final csv = buildCsv(items);
       final dir = await getTemporaryDirectory();
-      final fileName = 'spliteasy_history_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final fileName = 'settleflow_history_${DateTime.now().millisecondsSinceEpoch}.csv';
       final file = File('${dir.path}/$fileName');
       await file.writeAsString(csv);
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'text/csv')],
-        subject: 'SplitEasy History Export',
+        subject: 'SettleFlow History Export',
         text: AppInfo.inviteMessage,
       );
     } catch (e) {

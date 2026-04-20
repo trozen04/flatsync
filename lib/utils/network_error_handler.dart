@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 
 class NetworkErrorHandler {
   static const String moneyWriteMessage =
-      'Not saved. Check your internet and try again.';
+      'Oops! Changes could not be saved. Please try again.';
 
   static bool isNetworkIssue(Object error) {
     if (error is DioException) {
@@ -18,6 +18,7 @@ class NetworkErrorHandler {
         raw.contains('connection');
   }
 
+
   static String message(
     Object error, {
     String fallback = 'Something went wrong. Please try again.',
@@ -29,11 +30,11 @@ class NetworkErrorHandler {
       if (error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.sendTimeout ||
           error.type == DioExceptionType.receiveTimeout) {
-        return 'Request timed out. Please try again.';
+        return 'Taking too long to respond. Please try again.';
       }
 
       if (error.type == DioExceptionType.connectionError) {
-        return 'Unable to connect. Check your internet and try again.';
+        return 'Oops! Could not reach the server. Please try again.';
       }
 
       if (statusCode == 429) {
@@ -53,10 +54,10 @@ class NetworkErrorHandler {
 
     final raw = error.toString().toLowerCase();
     if (raw.contains('socketexception') || raw.contains('connection')) {
-      return 'Unable to connect. Check your internet and try again.';
+      return 'Oops! Could not reach the server. Please try again.';
     }
     if (raw.contains('timeout')) {
-      return 'Request timed out. Please try again.';
+      return 'Taking too long to respond. Please try again.';
     }
 
     return fallback;

@@ -393,7 +393,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       return true;
     } catch (e) {
       if (mounted) {
-        CustomSnackBar.showOnOverlay(overlay, message: 'Failed to remove contact', isError: true);
+      CustomSnackBar.showOnOverlay(overlay, message: 'Could not remove contact. Please try again.', isError: true);
       }
       return false;
     }
@@ -445,7 +445,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           overlay,
           message: NetworkErrorHandler.message(
             e,
-            fallback: 'Failed to add contact',
+            fallback: 'Could not add contact. Please try again.',
           ),
           isError: true,
         );

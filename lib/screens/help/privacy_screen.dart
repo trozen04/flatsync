@@ -19,7 +19,7 @@ class PrivacyScreen extends StatelessWidget {
           children: [
             const HelpHeroCard(
               icon: Icons.privacy_tip_rounded,
-              title: 'How SplitEasy handles your data',
+              title: 'How SettleFlow handles your data',
               subtitle:
                   'We collect only what is needed for the app to work and to keep your account and shared expenses synced.',
             ),
