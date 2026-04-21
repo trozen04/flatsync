@@ -73,7 +73,7 @@ const ContactModelSchema = CollectionSchema(
   getId: _contactModelGetId,
   getLinks: _contactModelGetLinks,
   attach: _contactModelAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _contactModelEstimateSize(

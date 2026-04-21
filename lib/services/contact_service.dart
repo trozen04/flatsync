@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import '../utils/phone_utils.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:developer' as developer;
 import '../models/contact_model.dart';

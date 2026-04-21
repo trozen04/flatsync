@@ -33,8 +33,17 @@ android {
         applicationId = "com.trozen.flatsync"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
-        versionCode = 19
+        versionCode = 21
         versionName = "1.0.1"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64", "armeabi-v7a")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 
     signingConfigs {

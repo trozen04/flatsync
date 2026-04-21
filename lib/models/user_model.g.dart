@@ -88,7 +88,7 @@ const UserModelSchema = CollectionSchema(
   getId: _userModelGetId,
   getLinks: _userModelGetLinks,
   attach: _userModelAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _userModelEstimateSize(
