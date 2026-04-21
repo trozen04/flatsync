@@ -17,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.trozen.flatsync"
     compileSdk = 35
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -33,7 +33,7 @@ android {
         applicationId = "com.trozen.flatsync"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
-        versionCode = 18
+        versionCode = 19
         versionName = "1.0.1"
     }
 
@@ -65,6 +65,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("com.google.android.material:material:1.12.0")
     implementation("com.google.android.play:feature-delivery:2.1.0")
     implementation("com.google.android.play:app-update:2.1.0")
     implementation("com.google.android.play:review:2.0.1")

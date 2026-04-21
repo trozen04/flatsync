@@ -7,6 +7,8 @@ import '../../constants/app_currencies.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_dimensions.dart';
 import '../../constants/app_text_styles.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../../routes/app_routes.dart';
 import '../../services/app_preferences_service.dart';
 import '../../widgets/app_card.dart';
@@ -664,6 +666,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           subtitle: 'How your data is handled',
                           onTap: () =>
                               Navigator.pushNamed(context, AppRoutes.privacy),
+                        ),
+                      ],
+                    ),
+                    AppDimensions.h20(context),
+                    const AppSectionHeader(
+                      title: 'Support the developer',
+                      subtitle: 'If you enjoy the app, consider buying me a coffee ☕',
+                    ),
+                    AppDimensions.h10(context),
+                    _groupCard(
+                      context,
+                      [
+                        _profileActionRow(
+                          context,
+                          icon: Icons.coffee_rounded,
+                          title: 'Buy Me a Coffee',
+                          subtitle: 'buymeacoffee.com/bhoopendrai',
+                          onTap: () => launchUrl(
+                            Uri.parse('https://buymeacoffee.com/bhoopendrai'),
+                            mode: LaunchMode.externalApplication,
+                          ),
                         ),
                       ],
                     ),

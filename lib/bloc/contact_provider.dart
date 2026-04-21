@@ -24,7 +24,10 @@ class ContactProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final contacts = await _isarService.isar.contactModels.filter().idGreaterThan(-1).findAll();
+      final contacts = await _isarService.isar.contactModels
+          .filter()
+          .idGreaterThan(-1)
+          .findAll();
       contacts.sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
       _contacts = contacts;
     } catch (e) {
@@ -57,10 +60,11 @@ class ContactProvider extends ChangeNotifier {
   }
 
   String _canonicalPhone(String? phone) => PhoneUtils.canonical(phone);
-  bool _looksLikePhoneName(String? value) => PhoneUtils.looksLikePhoneName(value);
+  bool _looksLikePhoneName(String? value) =>
+      PhoneUtils.looksLikePhoneName(value);
 
   String getDisplayName(String? identifier) {
-    if (identifier == null || identifier.isEmpty) return 'Unknown';
+    if (identifier == null || identifier.isEmpty) return 'Contact';
 
     // Try by ID first if it has a real name.
     final byId = getContactById(identifier);
@@ -106,4 +110,3 @@ class ContactProvider extends ChangeNotifier {
     return identifier;
   }
 }
-

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -59,6 +60,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _refreshing = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCurrentUserId();
       _loadHistory(forceRefresh: false);
@@ -80,24 +82,133 @@ class _HistoryScreenState extends State<HistoryScreen> {
     ContactProvider contactProvider, {
     Map<String, dynamic>? summary,
     String? fallback,
+    Map<String, dynamic>? item,
+    String? direction,
   }) {
-    final summaryName = _stringValue(summary?['name']);
-    if (summaryName.isNotEmpty) return summaryName;
-
-    final summaryPhone = _stringValue(summary?['phoneNumber']);
-    if (summaryPhone.isNotEmpty) return summaryPhone;
-
-    final contact = contactProvider.getContactById(fallback) ??
-        contactProvider.getContactByPhone(fallback);
-    if (contact != null) {
-      final name = _stringValue(contact.name);
-      if (name.isNotEmpty) return name;
-      final phone = _stringValue(contact.phoneNumber);
-      if (phone.isNotEmpty) return phone;
+    void logResolution(String source, String value) {
+      developer.log(
+        '[HistoryScreen] resolvedLabel="$value" via=$source direction=$direction summaryName=${_stringValue(summary?['name'])} summaryPhone=${_stringValue(summary?['phoneNumber'])} summaryId=${_stringValue(summary?['_id'])} fallback=$fallback fromUserId=${_stringValue(item?['fromUserId'])} fromPhone=${_stringValue(item?['fromPhone'])} toUserId=${_stringValue(item?['toUserId'])} toPhone=${_stringValue(item?['toPhone'])}',
+        name: 'HistoryScreen',
+      );
     }
 
-    final fallbackText = _stringValue(fallback);
-    return fallbackText.isNotEmpty ? fallbackText : 'Unknown';
+    final summaryCandidates = <String>[
+      _stringValue(summary?['name']),
+      _stringValue(summary?['phoneNumber']),
+      _stringValue(summary?['_id']),
+    ];
+
+    for (final candidate in summaryCandidates) {
+      if (candidate.isEmpty) continue;
+      final contact = contactProvider.getContactById(candidate) ??
+          contactProvider.getContactByPhone(candidate);
+      if (contact != null) {
+        final name = _stringValue(contact.name);
+        if (name.isNotEmpty) {
+          logResolution('summary-contact-name', name);
+          return name;
+        }
+        final phone = _stringValue(contact.phoneNumber);
+        if (phone.isNotEmpty) {
+          logResolution('summary-contact-phone', phone);
+          return phone;
+        }
+      }
+      logResolution('summary-raw', candidate);
+      return candidate;
+    }
+
+    final candidates = <String?>[
+      fallback,
+      if (item != null) ...[
+        if (direction == 'received') _stringValue(item['fromUserId']),
+        if (direction == 'received') _stringValue(item['fromPhone']),
+        if (direction == 'sent') _stringValue(item['toUserId']),
+        if (direction == 'sent') _stringValue(item['toPhone']),
+        _stringValue(item['fromUserId']),
+        _stringValue(item['toUserId']),
+        _stringValue(item['fromPhone']),
+        _stringValue(item['toPhone']),
+      ],
+    ];
+
+    for (final candidate in candidates) {
+      final value = _stringValue(candidate);
+      if (value.isEmpty) continue;
+      final contact = contactProvider.getContactById(value) ??
+          contactProvider.getContactByPhone(value);
+      if (contact != null) {
+        final name = _stringValue(contact.name);
+        if (name.isNotEmpty) {
+          logResolution('fallback-contact-name', name);
+          return name;
+        }
+        final phone = _stringValue(contact.phoneNumber);
+        if (phone.isNotEmpty) {
+          logResolution('fallback-contact-phone', phone);
+          return phone;
+        }
+      }
+      logResolution('fallback-raw', value);
+      return value;
+    }
+
+    final bestFromItem = item == null
+        ? ''
+        : _stringValue(item['fromPhone']).isNotEmpty
+            ? _stringValue(item['fromPhone'])
+            : _stringValue(item['toPhone']).isNotEmpty
+                ? _stringValue(item['toPhone'])
+                : _stringValue(item['fromUserId']).isNotEmpty
+                    ? _stringValue(item['fromUserId'])
+                    : _stringValue(item['toUserId']);
+    final resolved = bestFromItem.isNotEmpty ? bestFromItem : 'Unknown';
+    logResolution('item-fallback', resolved);
+    return resolved;
+  }
+
+  Map<String, dynamic>? _normalizeCounterparty(dynamic raw) {
+    if (raw is Map<String, dynamic>) {
+      return raw;
+    }
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), v));
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      return <String, dynamic>{'_id': raw.trim()};
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _normalizeUserSummary(dynamic raw) {
+    final summary = _normalizeCounterparty(raw);
+    if (summary == null) return null;
+
+    final normalized = <String, dynamic>{};
+    final id = _stringValue(summary['_id']);
+    final name = _stringValue(summary['name']);
+    final phone = _stringValue(summary['phoneNumber']);
+
+    if (id.isNotEmpty) normalized['_id'] = id;
+    if (name.isNotEmpty) normalized['name'] = name;
+    if (phone.isNotEmpty) normalized['phoneNumber'] = phone;
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  List<String> _participantLabelsForExpense(
+    ContactProvider contactProvider,
+    Map<String, dynamic> item,
+  ) {
+    final rawPhones = item['participantPhones'];
+    final phones = rawPhones is List
+        ? rawPhones
+            .map((e) => e?.toString().trim() ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList()
+        : <String>[];
+    return phones
+        .map((phone) => contactProvider.getDisplayName(phone))
+        .toList();
   }
 
   Widget _buildChip(String label, {IconData? icon, Color? color}) {
@@ -171,9 +282,50 @@ class _HistoryScreenState extends State<HistoryScreen> {
         item['paidBy'] ??= item['createdBy'];
       } else if (item['type'] == 'transaction') {
         final counterparty = item['counterparty'];
-        if (counterparty is Map) {
-          item['counterparty'] =
-              counterparty.map((k, v) => MapEntry(k.toString(), v));
+        final normalizedCounterparty = _normalizeCounterparty(counterparty);
+        if (normalizedCounterparty != null) {
+          item['counterparty'] = normalizedCounterparty;
+        } else {
+          final direction = (item['direction'] as String?)?.trim();
+          final preferredUser = direction == 'received'
+              ? _normalizeUserSummary(item['fromUser'])
+              : _normalizeUserSummary(item['toUser']);
+          final secondaryUser = direction == 'received'
+              ? _normalizeUserSummary(item['toUser'])
+              : _normalizeUserSummary(item['fromUser']);
+          final fallbackSummary =
+              preferredUser ?? secondaryUser ?? <String, dynamic>{};
+
+          if (fallbackSummary.isEmpty) {
+            final preferredId =
+                direction == 'received' ? item['fromUserId'] : item['toUserId'];
+            final preferredPhone =
+                direction == 'received' ? item['fromPhone'] : item['toPhone'];
+            final secondaryId =
+                direction == 'received' ? item['toUserId'] : item['fromUserId'];
+            final secondaryPhone =
+                direction == 'received' ? item['toPhone'] : item['fromPhone'];
+
+            if (preferredId != null &&
+                preferredId.toString().trim().isNotEmpty) {
+              fallbackSummary['_id'] = preferredId.toString();
+            } else if (secondaryId != null &&
+                secondaryId.toString().trim().isNotEmpty) {
+              fallbackSummary['_id'] = secondaryId.toString();
+            }
+
+            if (preferredPhone != null &&
+                preferredPhone.toString().trim().isNotEmpty) {
+              fallbackSummary['phoneNumber'] = preferredPhone.toString();
+            } else if (secondaryPhone != null &&
+                secondaryPhone.toString().trim().isNotEmpty) {
+              fallbackSummary['phoneNumber'] = secondaryPhone.toString();
+            }
+          }
+
+          if (fallbackSummary.isNotEmpty) {
+            item['counterparty'] = fallbackSummary;
+          }
         }
       }
       return item;
@@ -349,7 +501,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               } catch (_) {
                                 messenger.showSnackBar(
                                   const SnackBar(
-                                      content: Text('Could not export. Please try again.')),
+                                      content: Text(
+                                          'Could not export. Please try again.')),
                                 );
                               } finally {
                                 if (mounted) setState(() => _exporting = false);
@@ -388,351 +541,435 @@ class _HistoryScreenState extends State<HistoryScreen> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () => _loadHistory(forceRefresh: true),
-                child: _filtered.isEmpty
-                    ? ListView(
-                        children: [
-                          AppDimensions.h100(context),
-                          Center(
-                            child: Text('No results',
-                                style: AppTextStyles.bodyMedium(context)),
-                          ),
-                        ],
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        controller: _scrollController,
-                        padding: EdgeInsets.fromLTRB(
-                          pageMargin.left,
-                          pageMargin.top,
-                          pageMargin.right,
-                          120,
-                        ),
-                        itemCount: displayCount,
-                        itemBuilder: (context, index) {
-                          if (_loadingMore && index == displayCount - 1) {
-                            return Center(
-                              child: Padding(
-                                padding: AppDimensions.fieldPadding(context),
-                                child: const CircularProgressIndicator(),
+                child: _refreshing && _filtered.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : _filtered.isEmpty
+                        ? ListView(
+                            children: [
+                              AppDimensions.h100(context),
+                              Center(
+                                child: Text(
+                                  _searchQuery.trim().isNotEmpty
+                                      ? 'No results'
+                                      : 'No history yet',
+                                  style: AppTextStyles.bodyMedium(context),
+                                ),
                               ),
-                            );
-                          }
-
-                          if (_isNativeAdSlot(index)) {
-                            return const NativeAdWidget();
-                          }
-
-                          final item =
-                              _filtered[_realItemIndexForDisplayIndex(index)];
-                          final type = (item['type'] as String?) ?? '';
-                          final amountPaise =
-                              (item['amount'] as num?)?.round() ?? 0;
-                          final totalAmountPaise =
-                              (item['totalAmount'] as num?)?.round();
-                          final participants =
-                              (item['participants'] as num?)?.round() ?? 0;
-                          final description =
-                              (item['description'] as String?) ?? '';
-                          final paidBy = item['paidBy'] as String?;
-                          final counterpartyRaw = item['counterparty'];
-                          final counterpartySummary =
-                              counterpartyRaw is Map<String, dynamic>
-                                  ? counterpartyRaw
-                                  : null;
-                          final counterparty =
-                              counterpartySummary?['_id']?.toString();
-                          final direction = item['direction'] as String?;
-                          final date = item['createdAt'] as DateTime;
-                          final isDeleted = item['isDeleted'] == true;
-                          final deletedBy =
-                              (item['deletedBy'] as String?)?.trim();
-                          final updatedBy =
-                              (item['updatedBy'] as String?)?.trim();
-
-                          // developer.log('📊 HISTORY ITEM: type=$type, amount=$amountPaise, description=$description');
-
-                          final formattedDate = AppDateUtils.formatDate(date);
-                          final formattedTime = AppDateUtils.formatTime(date);
-
-                          String subtitle;
-
-                          if (type == 'transaction') {
-                            final isReceivedByMe = direction == 'received';
-                            final displayName = _displayLabelForUser(
-                              contactProvider,
-                              summary: counterpartySummary,
-                              fallback: counterparty,
-                            );
-                            subtitle = isReceivedByMe
-                                ? 'Received from $displayName'
-                                : 'Sent to $displayName';
-                          } else {
-                            final isCreatedByMe = paidBy == _currentUserId;
-                            final payerName = _displayLabelForUser(
-                              contactProvider,
-                              summary: counterpartySummary,
-                              fallback: paidBy,
-                            );
-                            subtitle = isCreatedByMe
-                                ? 'You paid for expense'
-                                : '$payerName paid for expense';
-                          }
-
-                          final amountColor = type == 'expense'
-                              ? AppColors.primary
-                              : (direction == 'received'
-                                  ? AppColors.success
-                                  : AppColors.error);
-                          final metaLabel = isDeleted
-                              ? (deletedBy != null && deletedBy.isNotEmpty
-                                  ? 'Deleted by $deletedBy'
-                                  : 'Deleted record')
-                              : updatedBy != null && updatedBy.isNotEmpty
-                                  ? 'Edited by $updatedBy'
-                                  : null;
-                          final entryTitle = description.isNotEmpty
-                              ? description
-                              : (type == 'expense' ? 'Expense' : 'Transaction');
-                          final amountLabel = type == 'expense'
-                              ? 'Your share'
-                              : (direction == 'received'
-                                  ? 'Received'
-                                  : 'Sent');
-                          final amountText = formatMinorUnits(
-                            amountPaise,
-                            currencyCode: preferredCurrencyCode,
-                          );
-
-                          return Opacity(
-                            opacity: isDeleted ? 0.55 : 1.0,
-                            child: AppCard(
-                            type: AppCardType.elevated,
-                            margin: EdgeInsets.only(
-                              bottom: AppDimensions.compactCardMargin(context).bottom,
+                            ],
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            controller: _scrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              pageMargin.left,
+                              pageMargin.top,
+                              pageMargin.right,
+                              120,
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            backgroundColor: AppColors.surface,
-                            borderRadius: BorderRadius.circular(16),
-                            shadowColor: amountColor,
-                            onTap: () {
-                              final items = <DetailItem>[];
-                              if (type == 'expense') {
-                                items.add(DetailItem(
-                                    label: 'Description',
-                                    value: description,
-                                    icon: Icons.description));
-                                if (totalAmountPaise != null) {
-                                  items.add(DetailItem(
-                                    label: 'Total Amount',
-                                    value: formatMinorUnits(totalAmountPaise,
-                                        currencyCode: preferredCurrencyCode),
-                                    icon: Icons.account_balance_wallet,
-                                    valueColor: AppColors.primary,
-                                  ));
-                                }
-                                items.add(DetailItem(
-                                  label: 'Your Share',
-                                  value: formatMinorUnits(amountPaise,
-                                      currencyCode: preferredCurrencyCode),
-                                  icon: Icons.person,
-                                  valueColor: AppColors.primary,
-                                ));
-                                if (participants > 0) {
-                                  items.add(DetailItem(
-                                    label: 'Split Between',
-                                    value: '${participants + 1} people',
-                                    icon: Icons.group,
-                                  ));
-                                }
-                                items.add(DetailItem(
-                                    label: subtitle,
-                                    value: '',
-                                    icon: Icons.info_outline));
-                              } else {
-                                items.add(DetailItem(
-                                    label: 'Description',
-                                    value: description,
-                                    icon: Icons.description));
-                                items.add(DetailItem(
-                                  label: 'Amount',
-                                  value: formatMinorUnits(amountPaise,
-                                      currencyCode: preferredCurrencyCode),
-                                  icon: Icons.payments,
-                                  valueColor: amountColor,
-                                ));
-                                items.add(DetailItem(
-                                  label: 'Type',
-                                  value: subtitle,
-                                  icon: direction == 'received'
-                                      ? Icons.call_received
-                                      : Icons.call_made,
-                                ));
+                            itemCount: displayCount,
+                            itemBuilder: (context, index) {
+                              if (_loadingMore && index == displayCount - 1) {
+                                return Center(
+                                  child: Padding(
+                                    padding:
+                                        AppDimensions.fieldPadding(context),
+                                    child: const CircularProgressIndicator(),
+                                  ),
+                                );
                               }
-                              items.add(DetailItem(
-                                label: 'Date & Time',
-                                value: '$formattedDate at $formattedTime',
-                                icon: Icons.calendar_today,
-                              ));
-                              if (metaLabel != null) {
-                                items.add(DetailItem(
-                                  label: isDeleted ? 'Deleted' : 'Updated',
-                                  value: metaLabel,
-                                  icon: isDeleted
-                                      ? Icons.delete_outline_rounded
-                                      : Icons.edit_outlined,
-                                  valueColor: isDeleted
-                                      ? AppColors.error
-                                      : AppColors.textSecondary,
-                                ));
+
+                              if (_isNativeAdSlot(index)) {
+                                return const NativeAdWidget();
                               }
-                              showDialog(
-                                context: context,
-                                builder: (context) => DetailDialog(
-                                  title: type == 'expense'
-                                      ? 'Expense Details'
-                                      : 'Transaction Details',
-                                  items: items,
-                                  accentColor: amountColor,
-                                ),
+
+                              final item = _filtered[
+                                  _realItemIndexForDisplayIndex(index)];
+                              final type = (item['type'] as String?) ?? '';
+                              final amountPaise =
+                                  (item['amount'] as num?)?.round() ?? 0;
+                              final totalAmountPaise =
+                                  (item['totalAmount'] as num?)?.round();
+                              final participants =
+                                  (item['participants'] as num?)?.round() ?? 0;
+                              final description =
+                                  (item['description'] as String?) ?? '';
+                              final paidBy = item['paidBy'] as String?;
+                              final participantLabels =
+                                  _participantLabelsForExpense(
+                                contactProvider,
+                                item,
                               );
-                            },
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                // Icon
-                                Container(
-                                  width: 42,
-                                  height: 42,
-                                  decoration: BoxDecoration(
-                                    color: amountColor.withValues(alpha: 0.10),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(
-                                    type == 'expense'
-                                        ? Icons.receipt_long_rounded
-                                        : (direction == 'received'
-                                            ? Icons.call_received_rounded
-                                            : Icons.call_made_rounded),
-                                    color: amountColor,
-                                    size: 19,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                // Middle content
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              entryTitle,
-                                              style: AppTextStyles.titleSmall(context).copyWith(
-                                                fontWeight: FontWeight.w600,
-                                                decoration: isDeleted ? TextDecoration.lineThrough : null,
-                                                decorationColor: AppColors.textSecondary,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                              final counterpartyRaw = item['counterparty'];
+                              final counterpartySummary =
+                                  _normalizeUserSummary(counterpartyRaw) ??
+                                      _normalizeUserSummary(item['toUser']) ??
+                                      _normalizeUserSummary(item['fromUser']) ??
+                                      _normalizeCounterparty(counterpartyRaw);
+                              final counterparty =
+                                  counterpartySummary?['_id']?.toString() ??
+                                      (counterpartyRaw is String
+                                          ? counterpartyRaw.trim()
+                                          : null);
+                              final direction = item['direction'] as String?;
+                              final date = item['createdAt'] as DateTime;
+                              final isDeleted = item['isDeleted'] == true;
+                              final deletedBy =
+                                  (item['deletedBy'] as String?)?.trim();
+                              final updatedBy =
+                                  (item['updatedBy'] as String?)?.trim();
+
+                              // developer.log('📊 HISTORY ITEM: type=$type, amount=$amountPaise, description=$description');
+
+                              final formattedDate =
+                                  AppDateUtils.formatDate(date);
+                              final formattedTime =
+                                  AppDateUtils.formatTime(date);
+
+                              String subtitle;
+
+                              if (type == 'transaction') {
+                                final isReceivedByMe = direction == 'received';
+                                final displayName = _displayLabelForUser(
+                                  contactProvider,
+                                  summary: counterpartySummary,
+                                  fallback: counterparty,
+                                  item: item,
+                                  direction: direction,
+                                );
+                                subtitle = isReceivedByMe
+                                    ? 'Received from $displayName'
+                                    : 'Sent to $displayName';
+                              } else {
+                                final isCreatedByMe = paidBy == _currentUserId;
+                                final payerName = _displayLabelForUser(
+                                  contactProvider,
+                                  summary: counterpartySummary,
+                                  fallback: paidBy,
+                                  item: item,
+                                );
+                                subtitle = isCreatedByMe
+                                    ? 'You paid for expense'
+                                    : '$payerName paid for expense';
+                              }
+
+                              final amountColor = type == 'expense'
+                                  ? AppColors.primary
+                                  : (direction == 'received'
+                                      ? AppColors.success
+                                      : AppColors.error);
+                              final metaLabel = isDeleted
+                                  ? (deletedBy != null && deletedBy.isNotEmpty
+                                      ? 'Deleted by $deletedBy'
+                                      : 'Deleted record')
+                                  : updatedBy != null && updatedBy.isNotEmpty
+                                      ? 'Edited by $updatedBy'
+                                      : null;
+                              final entryTitle = description.isNotEmpty
+                                  ? description
+                                  : (type == 'expense'
+                                      ? 'Expense'
+                                      : 'Transaction');
+                              final amountLabel = type == 'expense'
+                                  ? 'Your share'
+                                  : (direction == 'received'
+                                      ? 'Received'
+                                      : 'Sent');
+                              final amountText = formatMinorUnits(
+                                amountPaise,
+                                currencyCode: preferredCurrencyCode,
+                              );
+
+                              return Opacity(
+                                  opacity: isDeleted ? 0.55 : 1.0,
+                                  child: AppCard(
+                                    type: AppCardType.elevated,
+                                    margin: EdgeInsets.only(
+                                      bottom: AppDimensions.compactCardMargin(
+                                              context)
+                                          .bottom,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 12),
+                                    backgroundColor: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(16),
+                                    shadowColor: amountColor,
+                                    onTap: () {
+                                      final items = <DetailItem>[];
+                                      if (type == 'expense') {
+                                        items.add(DetailItem(
+                                            label: 'Description',
+                                            value: description,
+                                            icon: Icons.description));
+                                        if (totalAmountPaise != null) {
+                                          items.add(DetailItem(
+                                            label: 'Total Amount',
+                                            value: formatMinorUnits(
+                                                totalAmountPaise,
+                                                currencyCode:
+                                                    preferredCurrencyCode),
+                                            icon: Icons.account_balance_wallet,
+                                            valueColor: AppColors.primary,
+                                          ));
+                                        }
+                                        items.add(DetailItem(
+                                          label: 'Your Share',
+                                          value: formatMinorUnits(amountPaise,
+                                              currencyCode:
+                                                  preferredCurrencyCode),
+                                          icon: Icons.person,
+                                          valueColor: AppColors.primary,
+                                        ));
+                                        if (participantLabels.isNotEmpty) {
+                                          items.add(DetailItem(
+                                            label: 'Shared With',
+                                            value: participantLabels.join(', '),
+                                            icon: Icons.group_outlined,
+                                          ));
+                                        }
+                                        if (participants > 0) {
+                                          items.add(DetailItem(
+                                            label: 'Split Between',
+                                            value: '${participants + 1} people',
+                                            icon: Icons.group,
+                                          ));
+                                        }
+                                        items.add(DetailItem(
+                                            label: subtitle,
+                                            value: '',
+                                            icon: Icons.info_outline));
+                                      } else {
+                                        items.add(DetailItem(
+                                            label: 'Description',
+                                            value: description,
+                                            icon: Icons.description));
+                                        items.add(DetailItem(
+                                          label: 'Amount',
+                                          value: formatMinorUnits(amountPaise,
+                                              currencyCode:
+                                                  preferredCurrencyCode),
+                                          icon: Icons.payments,
+                                          valueColor: amountColor,
+                                        ));
+                                        items.add(DetailItem(
+                                          label: 'Type',
+                                          value: subtitle,
+                                          icon: direction == 'received'
+                                              ? Icons.call_received
+                                              : Icons.call_made,
+                                        ));
+                                      }
+                                      items.add(DetailItem(
+                                        label: 'Date & Time',
+                                        value:
+                                            '$formattedDate at $formattedTime',
+                                        icon: Icons.calendar_today,
+                                      ));
+                                      if (metaLabel != null) {
+                                        items.add(DetailItem(
+                                          label:
+                                              isDeleted ? 'Deleted' : 'Updated',
+                                          value: metaLabel,
+                                          icon: isDeleted
+                                              ? Icons.delete_outline_rounded
+                                              : Icons.edit_outlined,
+                                          valueColor: isDeleted
+                                              ? AppColors.error
+                                              : AppColors.textSecondary,
+                                        ));
+                                      }
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => DetailDialog(
+                                          title: type == 'expense'
+                                              ? 'Expense Details'
+                                              : 'Transaction Details',
+                                          items: items,
+                                          accentColor: amountColor,
+                                        ),
+                                      );
+                                    },
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        // Icon
+                                        Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color: amountColor.withValues(
+                                                alpha: 0.10),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
                                           ),
-                                          if (isDeleted) ...[  
-                                            const SizedBox(width: 6),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.error.withValues(alpha: 0.10),
-                                                borderRadius: BorderRadius.circular(4),
+                                          child: Icon(
+                                            type == 'expense'
+                                                ? Icons.receipt_long_rounded
+                                                : (direction == 'received'
+                                                    ? Icons
+                                                        .call_received_rounded
+                                                    : Icons.call_made_rounded),
+                                            color: amountColor,
+                                            size: 19,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        // Middle content
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      entryTitle,
+                                                      style: AppTextStyles
+                                                              .titleSmall(
+                                                                  context)
+                                                          .copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        decoration: isDeleted
+                                                            ? TextDecoration
+                                                                .lineThrough
+                                                            : null,
+                                                        decorationColor:
+                                                            AppColors
+                                                                .textSecondary,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  if (isDeleted) ...[
+                                                    const SizedBox(width: 6),
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors.error
+                                                            .withValues(
+                                                                alpha: 0.10),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(4),
+                                                      ),
+                                                      child: Text(
+                                                        'Deleted',
+                                                        style: TextStyle(
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color:
+                                                              AppColors.error,
+                                                          letterSpacing: 0.2,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
                                               ),
-                                              child: Text(
-                                                'Deleted',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: AppColors.error,
-                                                  letterSpacing: 0.2,
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                subtitle,
+                                                style: AppTextStyles.caption(
+                                                        context)
+                                                    .copyWith(
+                                                  color:
+                                                      AppColors.textSecondary,
                                                 ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
+                                              const SizedBox(height: 5),
+                                              Wrap(
+                                                spacing: 5,
+                                                runSpacing: 3,
+                                                children: [
+                                                  _buildChip(
+                                                    '$formattedDate · $formattedTime',
+                                                    icon:
+                                                        Icons.schedule_rounded,
+                                                  ),
+                                                  if (type == 'expense' &&
+                                                      totalAmountPaise != null)
+                                                    _buildChip(
+                                                      'Total ${formatMinorUnits(totalAmountPaise, currencyCode: preferredCurrencyCode)}',
+                                                      icon: Icons
+                                                          .account_balance_wallet_outlined,
+                                                      color: AppColors.primary,
+                                                    ),
+                                                  if (type == 'expense' &&
+                                                      participants > 0)
+                                                    _buildChip(
+                                                      '${participants + 1} people',
+                                                      icon:
+                                                          Icons.group_outlined,
+                                                    ),
+                                                  if (!isDeleted &&
+                                                      metaLabel != null)
+                                                    _buildChip(
+                                                      metaLabel,
+                                                      icon: Icons.edit_outlined,
+                                                      color: AppColors
+                                                          .textSecondary,
+                                                    ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        // Amount
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              amountText,
+                                              style: AppTextStyles.titleSmall(
+                                                      context)
+                                                  .copyWith(
+                                                fontWeight: FontWeight.w700,
+                                                decoration: isDeleted
+                                                    ? TextDecoration.lineThrough
+                                                    : null,
+                                                decorationColor:
+                                                    AppColors.textSecondary,
+                                                color: isDeleted
+                                                    ? AppColors.textSecondary
+                                                    : amountColor,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            _buildChip(
+                                              amountLabel,
+                                              icon: type == 'expense'
+                                                  ? Icons.person_outline_rounded
+                                                  : (direction == 'received'
+                                                      ? Icons.south_west_rounded
+                                                      : Icons
+                                                          .north_east_rounded),
+                                              color: isDeleted
+                                                  ? AppColors.textSecondary
+                                                  : amountColor,
                                             ),
                                           ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        subtitle,
-                                        style: AppTextStyles.caption(context).copyWith(
-                                          color: AppColors.textSecondary,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 5),
-                                      Wrap(
-                                        spacing: 5,
-                                        runSpacing: 3,
-                                        children: [
-                                          _buildChip(
-                                            '$formattedDate · $formattedTime',
-                                            icon: Icons.schedule_rounded,
-                                          ),
-                                          if (type == 'expense' && totalAmountPaise != null)
-                                            _buildChip(
-                                              'Total ${formatMinorUnits(totalAmountPaise, currencyCode: preferredCurrencyCode)}',
-                                              icon: Icons.account_balance_wallet_outlined,
-                                              color: AppColors.primary,
-                                            ),
-                                          if (type == 'expense' && participants > 0)
-                                            _buildChip(
-                                              '${participants + 1} people',
-                                              icon: Icons.group_outlined,
-                                            ),
-                                          if (!isDeleted && metaLabel != null)
-                                            _buildChip(
-                                              metaLabel,
-                                              icon: Icons.edit_outlined,
-                                              color: AppColors.textSecondary,
-                                            ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                // Amount
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      amountText,
-                                      style: AppTextStyles.titleSmall(context).copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        decoration: isDeleted ? TextDecoration.lineThrough : null,
-                                        decorationColor: AppColors.textSecondary,
-                                        color: isDeleted ? AppColors.textSecondary : amountColor,
-                                      ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    _buildChip(
-                                      amountLabel,
-                                      icon: type == 'expense'
-                                          ? Icons.person_outline_rounded
-                                          : (direction == 'received'
-                                              ? Icons.south_west_rounded
-                                              : Icons.north_east_rounded),
-                                      color: isDeleted ? AppColors.textSecondary : amountColor,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ));
-                        },
-                      ),
+                                  ));
+                            },
+                          ),
               ),
             ),
-
 
             // Banner Ad
             // const BannerAdWidget(),

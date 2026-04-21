@@ -73,7 +73,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _scrollController.addListener(_onScroll);
     unawaited(_refreshData(forceRefresh: false));
     _updatesSub = context.read<ExpenseService>().updates.listen((_) {
-      if (mounted) _loadBalances(forceRefresh: false);
+      if (mounted) unawaited(_syncBalancesSilently());
     });
     // Listen to contact updates
     _contactUpdatesSub = context.read<ContactService>().updates.listen((_) {
@@ -123,11 +123,32 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _refreshData({bool forceRefresh = false}) async {
-    if (mounted) setState(() => _refreshing = true);
-    await _loadLocalContacts(reset: true);
-    await _loadBalances(forceRefresh: forceRefresh);
-    if (!mounted) return;
-    setState(() => _refreshing = false);
+    if (mounted) {
+      setState(() {
+        _refreshing = true;
+        _syncing = true;
+      });
+    }
+    try {
+      await _loadLocalContacts(reset: true);
+      await _loadBalances(forceRefresh: forceRefresh);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _refreshing = false;
+          _syncing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _syncBalancesSilently() async {
+    if (mounted) setState(() => _syncing = true);
+    try {
+      await _loadBalances(forceRefresh: false);
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
   }
 
   Future<void> _loadLocalContacts({bool reset = false}) async {
@@ -166,7 +187,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
       if (!mounted) return;
       if (_pendingResetAfterLoad && !reset) return;
       if (requestQuery != _query) return;
-      developer.log('[ContactsScreen] local contacts loaded: ${contacts.length} (offset=$nextOffset, query="$requestQuery")', name: 'ContactsScreen');
+      developer.log(
+          '[ContactsScreen] local contacts loaded: ${contacts.length} (offset=$nextOffset, query="$requestQuery")',
+          name: 'ContactsScreen');
       setState(() {
         _contacts = reset ? contacts : [..._contacts, ...contacts];
         _contactsOffset = nextOffset + contacts.length;
@@ -253,7 +276,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
           normalizedByCanonicalPhone.putIfAbsent(canonicalPhone, () => amount);
         }
       });
-      developer.log('[ContactsScreen] balances loaded: ${normalized.length} entries, owedToYou=${normalized.values.where((v) => v > 0).fold(0, (a, b) => a + b)}, youOwe=${normalized.values.where((v) => v < 0).fold(0, (a, b) => a + b.abs())}', name: 'ContactsScreen');
+      developer.log(
+          '[ContactsScreen] balances loaded: ${normalized.length} entries, owedToYou=${normalized.values.where((v) => v > 0).fold(0, (a, b) => a + b)}, youOwe=${normalized.values.where((v) => v < 0).fold(0, (a, b) => a + b.abs())}',
+          name: 'ContactsScreen');
       if (!mounted) return;
       setState(() {
         _balances = normalized;
@@ -367,14 +392,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final pin = await AppPinDialog.show(
       context,
       title: 'Remove Contact',
-      subtitle: 'Enter your PIN to remove ${contact.name ?? 'this contact'} from your list.',
+      subtitle:
+          'Enter your PIN to remove ${contact.name ?? 'this contact'} from your list.',
     );
     if (pin == null || pin.isEmpty) return false;
 
     final isValid = await authService.loginOffline(pin);
     if (!isValid) {
       if (mounted) {
-        CustomSnackBar.showOnOverlay(overlay, message: 'Incorrect PIN', isError: true);
+        CustomSnackBar.showOnOverlay(overlay,
+            message: 'Incorrect PIN', isError: true);
       }
       return false;
     }
@@ -388,12 +415,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
       await isar.deleteContact(contact.id);
       contactService.notifyUpdate();
       if (mounted) {
-        CustomSnackBar.showOnOverlay(overlay, message: '${contact.name ?? 'Contact'} removed');
+        CustomSnackBar.showOnOverlay(overlay,
+            message: '${contact.name ?? 'Contact'} removed');
       }
       return true;
     } catch (e) {
       if (mounted) {
-      CustomSnackBar.showOnOverlay(overlay, message: 'Could not remove contact. Please try again.', isError: true);
+        CustomSnackBar.showOnOverlay(overlay,
+            message: 'Could not remove contact. Please try again.',
+            isError: true);
       }
       return false;
     }
@@ -551,213 +581,225 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 child: _contacts.isEmpty && _refreshing
                     ? const Center(child: CircularProgressIndicator())
                     : _contacts.isEmpty
-                    ? buildEmptyState(
-                        title: hasSearch
-                            ? 'No people match your search'
-                            : 'No contacts yet',
-                        message: hasSearch
-                            ? 'Try a different name or phone number.'
-                            : 'Sync device contacts or add someone by phone to start splitting bills.',
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () => _refreshData(forceRefresh: true),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.only(bottom: 120),
-                          itemCount: _displayItemCount(),
-                          itemBuilder: (context, index) {
-                            if (_loadingMoreContacts &&
-                                index == _displayItemCount() - 1) {
-                              return Padding(
-                                padding: EdgeInsets.symmetric(
-                                  vertical:
-                                      AppDimensions.compactCardMargin(context)
+                        ? buildEmptyState(
+                            title: hasSearch
+                                ? 'No people match your search'
+                                : 'No contacts yet',
+                            message: hasSearch
+                                ? 'Try a different name or phone number.'
+                                : 'Sync device contacts or add someone by phone to start splitting bills.',
+                          )
+                        : RefreshIndicator(
+                            onRefresh: () => _refreshData(forceRefresh: true),
+                            child: ListView.builder(
+                              controller: _scrollController,
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.only(bottom: 120),
+                              itemCount: _displayItemCount(),
+                              itemBuilder: (context, index) {
+                                if (_loadingMoreContacts &&
+                                    index == _displayItemCount() - 1) {
+                                  return Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: AppDimensions.compactCardMargin(
+                                              context)
                                           .bottom,
-                                ),
-                                child: const Center(
-                                    child: CircularProgressIndicator()),
-                              );
-                            }
-
-                            if (_isNativeAdSlot(index)) {
-                              return const NativeAdWidget();
-                            }
-
-                            final contact =
-                                _contacts[_realItemIndexForDisplayIndex(index)];
-                            final balance = _balanceForContact(contact);
-                            final displayName =
-                                contact.name?.trim().isNotEmpty == true
-                                    ? contact.name!.trim()
-                                    : 'Unknown';
-                            final amountText = formatMinorUnits(
-                              balance.abs(),
-                              currencyCode: preferredCurrencyCode,
-                            );
-                            final balanceLabel = _balanceLabel(balance);
-                            final balanceColor = _balanceColor(balance);
-                            final initials = displayName.isNotEmpty
-                                ? displayName[0].toUpperCase()
-                                : '?';
-
-                            return Dismissible(
-                              key: ValueKey(contact.id),
-                              direction: DismissDirection.endToStart,
-                              confirmDismiss: (_) =>
-                                  _confirmDeleteContact(contact),
-                              background: Container(
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.only(right: 20),
-                                margin: AppDimensions.compactCardMargin(context),
-                                decoration: BoxDecoration(
-                                  color: AppColors.error.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: const Icon(
-                                  Icons.delete_rounded,
-                                  color: AppColors.error,
-                                ),
-                              ),
-                              child: AppCard(
-                                type: AppCardType.elevated,
-                                margin: AppDimensions.compactCardMargin(context),
-                                padding: AppDimensions.compactCardPadding(context),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          ConversationScreen(contact: contact),
                                     ),
+                                    child: const Center(
+                                        child: CircularProgressIndicator()),
                                   );
-                                },
-                                child: Row(
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
+                                }
+
+                                if (_isNativeAdSlot(index)) {
+                                  return const NativeAdWidget();
+                                }
+
+                                final contact = _contacts[
+                                    _realItemIndexForDisplayIndex(index)];
+                                final balance = _balanceForContact(contact);
+                                final displayName =
+                                    contact.name?.trim().isNotEmpty == true
+                                        ? contact.name!.trim()
+                                        : 'Unknown';
+                                final amountText = formatMinorUnits(
+                                  balance.abs(),
+                                  currencyCode: preferredCurrencyCode,
+                                );
+                                final balanceLabel = _balanceLabel(balance);
+                                final balanceColor = _balanceColor(balance);
+                                final initials = displayName.isNotEmpty
+                                    ? displayName[0].toUpperCase()
+                                    : '?';
+
+                                return Dismissible(
+                                  key: ValueKey(contact.id),
+                                  direction: DismissDirection.endToStart,
+                                  confirmDismiss: (_) =>
+                                      _confirmDeleteContact(contact),
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20),
+                                    margin: AppDimensions.compactCardMargin(
+                                        context),
                                     decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          balanceColor.withValues(alpha: 0.18),
-                                          balanceColor.withValues(alpha: 0.08),
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: balanceColor.withValues(
-                                            alpha: 0.20),
-                                        width: 1.5,
-                                      ),
+                                      color: AppColors.error
+                                          .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(16),
                                     ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      initials,
-                                      style: AppTextStyles.titleSmall(context)
-                                          .copyWith(
-                                        color: balanceColor,
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                                    child: const Icon(
+                                      Icons.delete_rounded,
+                                      color: AppColors.error,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
+                                  child: AppCard(
+                                    type: AppCardType.elevated,
+                                    margin: AppDimensions.compactCardMargin(
+                                        context),
+                                    padding: AppDimensions.compactCardPadding(
+                                        context),
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => ConversationScreen(
+                                              contact: contact),
+                                        ),
+                                      );
+                                    },
+                                    child: Row(
                                       children: [
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                displayName,
+                                        Container(
+                                          width: 44,
+                                          height: 44,
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                balanceColor.withValues(
+                                                    alpha: 0.18),
+                                                balanceColor.withValues(
+                                                    alpha: 0.08),
+                                              ],
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                            ),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: balanceColor.withValues(
+                                                  alpha: 0.20),
+                                              width: 1.5,
+                                            ),
+                                          ),
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            initials,
+                                            style: AppTextStyles.titleSmall(
+                                                    context)
+                                                .copyWith(
+                                              color: balanceColor,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      displayName,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: AppTextStyles
+                                                          .titleSmall(
+                                                        context,
+                                                      ).copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (contact.isRegistered) ...[
+                                                    const SizedBox(width: 6),
+                                                    const Icon(
+                                                      Icons.verified_rounded,
+                                                      size: 15,
+                                                      color: AppColors.success,
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                PhoneUtils.display(
+                                                    contact.phoneNumber),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
-                                                style: AppTextStyles.titleSmall(
-                                                  context,
-                                                ).copyWith(
+                                                style: AppTextStyles.bodySmall(
+                                                        context)
+                                                    .copyWith(fontSize: 11.5),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            FittedBox(
+                                              fit: BoxFit.scaleDown,
+                                              child: Text(
+                                                amountText,
+                                                style: AppTextStyles.labelLarge(
+                                                        context)
+                                                    .copyWith(
+                                                  color: balanceColor,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 3,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: balanceColor.withValues(
+                                                    alpha: 0.10),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                border: Border.all(
+                                                  color: balanceColor
+                                                      .withValues(alpha: 0.25),
+                                                ),
+                                              ),
+                                              child: Text(
+                                                balanceLabel,
+                                                style: AppTextStyles.labelSmall(
+                                                        context)
+                                                    .copyWith(
+                                                  color: balanceColor,
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                               ),
                                             ),
-                                            if (contact.isRegistered) ...[
-                                              const SizedBox(width: 6),
-                                              const Icon(
-                                                Icons.verified_rounded,
-                                                size: 15,
-                                                color: AppColors.success,
-                                              ),
-                                            ],
                                           ],
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          PhoneUtils.display(
-                                              contact.phoneNumber),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style:
-                                              AppTextStyles.bodySmall(context)
-                                                  .copyWith(fontSize: 11.5),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: Text(
-                                          amountText,
-                                          style:
-                                              AppTextStyles.labelLarge(context)
-                                                  .copyWith(
-                                            color: balanceColor,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: balanceColor.withValues(
-                                              alpha: 0.10),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          border: Border.all(
-                                            color: balanceColor.withValues(
-                                                alpha: 0.25),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          balanceLabel,
-                                          style:
-                                              AppTextStyles.labelSmall(context)
-                                                  .copyWith(
-                                            color: balanceColor,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                );
+                              },
                             ),
-                            );
-                          },
-                        ),
-                      ),
+                          ),
               ),
             ],
           ),

@@ -19,12 +19,14 @@ class ExpenseService {
   static const Duration _cacheTtl = Duration(seconds: 20);
   static const String _balancesStorageKey = 'offline_cached_balances_v1';
   static const String _recentAmountsStorageKey = 'recent_amounts_paise_v1';
-  static const String _transactionsStorageKey = 'offline_cached_transactions_v1';
+  static const String _transactionsStorageKey =
+      'offline_cached_transactions_v1';
   static const int _maxRecentAmounts = 8;
   static const int _maxConversationCacheEntries = 24;
   static const int _maxTimelineCacheEntries = 24;
 
-  final StreamController<int> _updatesController = StreamController<int>.broadcast();
+  final StreamController<int> _updatesController =
+      StreamController<int>.broadcast();
   int _revision = 0;
 
   List<ExpenseModel>? _expensesCache;
@@ -40,7 +42,7 @@ class ExpenseService {
 
   final Map<String, List<dynamic>> _conversationCache = {};
   final Map<String, DateTime> _conversationCacheAt = {};
-  final Map<String, List<Map<String, dynamic>>> _timelineCache = {};
+  final Map<String, TimelinePage> _timelineCache = {};
   final Map<String, DateTime> _timelineCacheAt = {};
   Future<Map<String, dynamic>>? _balancesInFlight;
   Future<Map<String, dynamic>>? _forceRefreshBalancesInFlight;
@@ -111,13 +113,19 @@ class ExpenseService {
   void _storeConversationCache(String key, List<dynamic> items) {
     _conversationCache[key] = List<dynamic>.unmodifiable(items);
     _conversationCacheAt[key] = DateTime.now();
-    _evictTimedCacheEntries(_conversationCache, _conversationCacheAt, _maxConversationCacheEntries);
+    _evictTimedCacheEntries(
+        _conversationCache, _conversationCacheAt, _maxConversationCacheEntries);
   }
 
-  void _storeTimelineCache(String key, List<Map<String, dynamic>> items) {
-    _timelineCache[key] = List<Map<String, dynamic>>.unmodifiable(items);
+  void _storeTimelineCache(String key, TimelinePage page) {
+    _timelineCache[key] = TimelinePage(
+      items: List<Map<String, dynamic>>.unmodifiable(page.items),
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+    );
     _timelineCacheAt[key] = DateTime.now();
-    _evictTimedCacheEntries(_timelineCache, _timelineCacheAt, _maxTimelineCacheEntries);
+    _evictTimedCacheEntries(
+        _timelineCache, _timelineCacheAt, _maxTimelineCacheEntries);
   }
 
   List<ContactModel> getCachedBalanceContacts() {
@@ -157,10 +165,13 @@ class ExpenseService {
     if (amountInPaise <= 0) return;
     try {
       final prefs = await _ensurePrefs();
-      final existing = prefs.getStringList(_recentAmountsStorageKey) ?? <String>[];
-      final filtered = existing.where((v) => v != amountInPaise.toString()).toList();
+      final existing =
+          prefs.getStringList(_recentAmountsStorageKey) ?? <String>[];
+      final filtered =
+          existing.where((v) => v != amountInPaise.toString()).toList();
       final updated = <String>[amountInPaise.toString(), ...filtered];
-      await prefs.setStringList(_recentAmountsStorageKey, updated.take(_maxRecentAmounts).toList());
+      await prefs.setStringList(
+          _recentAmountsStorageKey, updated.take(_maxRecentAmounts).toList());
     } catch (e) {
       developer.log('Persist recent amount error: $e');
     }
@@ -169,7 +180,8 @@ class ExpenseService {
   Future<void> _persistTransactions(List<TransactionModel> transactions) async {
     try {
       final prefs = await _ensurePrefs();
-      final rows = _dedupeTransactions(transactions).map((t) => t.toJson()).toList();
+      final rows =
+          _dedupeTransactions(transactions).map((t) => t.toJson()).toList();
       await prefs.setString(_transactionsStorageKey, jsonEncode(rows));
     } catch (e) {
       developer.log('Persist transactions cache error: $e');
@@ -191,8 +203,12 @@ class ExpenseService {
                 toUserId: (e['toUserId'] as String?) ?? '',
                 toPhone: (e['toPhone'] as String?)?.trim(),
                 amount: (e['amount'] as num?)?.toInt() ?? 0,
-                createdAt: DateTime.tryParse((e['createdAt'] as String?) ?? '') ?? DateTime.now().toUtc(),
-                updatedAt: DateTime.tryParse((e['updatedAt'] as String?) ?? '') ?? DateTime.now().toUtc(),
+                createdAt:
+                    DateTime.tryParse((e['createdAt'] as String?) ?? '') ??
+                        DateTime.now().toUtc(),
+                updatedAt:
+                    DateTime.tryParse((e['updatedAt'] as String?) ?? '') ??
+                        DateTime.now().toUtc(),
                 relatedExpenseId: e['relatedExpenseId'] as String?,
                 isDeleted: e['isDeleted'] as bool? ?? false,
                 deletedBy: (e['deletedBy'] as String?)?.trim(),
@@ -215,14 +231,19 @@ class ExpenseService {
         map[key] = tx;
       }
     }
-    return map.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return map.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   Future<List<int>> getRecentAmounts() async {
     try {
       final prefs = await _ensurePrefs();
-      final stored = prefs.getStringList(_recentAmountsStorageKey) ?? <String>[];
-      return stored.map((e) => int.tryParse(e) ?? 0).where((e) => e > 0).toList();
+      final stored =
+          prefs.getStringList(_recentAmountsStorageKey) ?? <String>[];
+      return stored
+          .map((e) => int.tryParse(e) ?? 0)
+          .where((e) => e > 0)
+          .toList();
     } catch (_) {
       return [];
     }
@@ -249,7 +270,8 @@ class ExpenseService {
         .map((p) => PhoneUtils.normalizeRaw(p))
         .where((p) => p.isNotEmpty)
         .toList();
-    developer.log('ExpenseService: creating expense "$description" amount=$totalAmount participants=${resolvedParticipants.length}');
+    developer.log(
+        'ExpenseService: creating expense "$description" amount=$totalAmount participants=${resolvedParticipants.length}');
     final response = await _api.post(
       ApiConfig.expenses,
       data: {
@@ -259,7 +281,8 @@ class ExpenseService {
         'category': category,
       },
     );
-    final model = ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
+    final model =
+        ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
     await _isarService.upsertExpense(model);
     await _storeRecentAmount(totalAmount);
     _invalidateCaches();
@@ -289,11 +312,18 @@ class ExpenseService {
     try {
       final response = await _api.get(ApiConfig.expenses);
       final expenses = response.data['data'] as List;
+      developer.log(
+        '[ExpenseService] /expenses raw data: ${jsonEncode(expenses)}',
+        name: 'ExpenseService',
+      );
       final parsed = expenses
           .map((json) => ExpenseModel.fromJson(json as Map<String, dynamic>))
           .toList();
-      developer.log('[ExpenseService] /expenses response: ${parsed.length} expenses', name: 'ExpenseService');
-      developer.log('[ExpenseService] /expenses data: $parsed', name: 'ExpenseService');
+      developer.log(
+          '[ExpenseService] /expenses response: ${parsed.length} expenses',
+          name: 'ExpenseService');
+      developer.log('[ExpenseService] /expenses parsed data: $parsed',
+          name: 'ExpenseService');
       await _isarService.batchUpsertExpenses(parsed);
       _expensesCache = parsed;
       _expensesCacheAt = DateTime.now();
@@ -327,7 +357,8 @@ class ExpenseService {
         if (category != null) 'category': category,
       },
     );
-    final model = ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
+    final model =
+        ExpenseModel.fromJson(response.data['data'] as Map<String, dynamic>);
     await _isarService.upsertExpense(model);
     _invalidateCaches();
     _emitUpdate();
@@ -349,7 +380,8 @@ class ExpenseService {
     String? toPhone,
     required int amount,
   }) async {
-    assert(toUserId != null || toPhone != null, 'Either toUserId or toPhone required');
+    assert(toUserId != null || toPhone != null,
+        'Either toUserId or toPhone required');
     final response = await _api.post(
       ApiConfig.transactions,
       data: {
@@ -361,7 +393,8 @@ class ExpenseService {
     final data = response.data['data'];
     if (data is Map<String, dynamic>) {
       final transaction = TransactionModel.fromJson(data);
-      final existing = List<TransactionModel>.from(_transactionsCache ?? const []);
+      final existing =
+          List<TransactionModel>.from(_transactionsCache ?? const []);
       existing.removeWhere((t) => t.transactionId == transaction.transactionId);
       existing.insert(0, transaction);
       _transactionsCache = existing;
@@ -374,15 +407,18 @@ class ExpenseService {
   }
 
   Future<void> deleteTransaction(String transactionId) async {
-    final response = await _api.delete(ApiConfig.transactionById(transactionId));
+    final response =
+        await _api.delete(ApiConfig.transactionById(transactionId));
     final data = response.data['data'];
-    final existing = List<TransactionModel>.from(_transactionsCache ?? const []);
+    final existing =
+        List<TransactionModel>.from(_transactionsCache ?? const []);
     if (data is Map<String, dynamic>) {
       final updated = TransactionModel.fromJson(data);
       existing.removeWhere((t) => t.transactionId == updated.transactionId);
       existing.insert(0, updated);
     } else {
-      final index = existing.indexWhere((t) => t.transactionId == transactionId);
+      final index =
+          existing.indexWhere((t) => t.transactionId == transactionId);
       if (index != -1) {
         final prev = existing[index];
         existing[index] = TransactionModel(
@@ -406,8 +442,11 @@ class ExpenseService {
     _emitUpdate();
   }
 
-  Future<List<TransactionModel>> getTransactions({bool forceRefresh = false}) async {
-    if (!forceRefresh && _transactionsCache != null && _isFresh(_transactionsCacheAt)) {
+  Future<List<TransactionModel>> getTransactions(
+      {bool forceRefresh = false}) async {
+    if (!forceRefresh &&
+        _transactionsCache != null &&
+        _isFresh(_transactionsCacheAt)) {
       return _transactionsCache!;
     }
 
@@ -424,9 +463,15 @@ class ExpenseService {
     try {
       final response = await _api.get(ApiConfig.transactions);
       final rows = response.data['data'] as List;
-      final parsed = rows.whereType<Map<String, dynamic>>().map(TransactionModel.fromJson).toList();
-      developer.log('[ExpenseService] /transactions response: ${parsed.length} transactions', name: 'ExpenseService');
-      developer.log('[ExpenseService] /transactions data: $parsed', name: 'ExpenseService');
+      final parsed = rows
+          .whereType<Map<String, dynamic>>()
+          .map(TransactionModel.fromJson)
+          .toList();
+      developer.log(
+          '[ExpenseService] /transactions response: ${parsed.length} transactions',
+          name: 'ExpenseService');
+      developer.log('[ExpenseService] /transactions data: $parsed',
+          name: 'ExpenseService');
       final deduped = _dedupeTransactions(parsed);
       unawaited(_persistTransactions(deduped));
       _transactionsCache = deduped;
@@ -450,17 +495,20 @@ class ExpenseService {
     }
 
     if (forceRefresh) {
-      if (_forceRefreshBalancesInFlight != null) return _forceRefreshBalancesInFlight!;
+      if (_forceRefreshBalancesInFlight != null)
+        return _forceRefreshBalancesInFlight!;
       final future = _fetchBalances(forceRefresh: true);
       _forceRefreshBalancesInFlight = future;
       try {
         return await future;
       } finally {
-        if (identical(_forceRefreshBalancesInFlight, future)) _forceRefreshBalancesInFlight = null;
+        if (identical(_forceRefreshBalancesInFlight, future))
+          _forceRefreshBalancesInFlight = null;
       }
     }
 
-    if (_forceRefreshBalancesInFlight != null) return _forceRefreshBalancesInFlight!;
+    if (_forceRefreshBalancesInFlight != null)
+      return _forceRefreshBalancesInFlight!;
     if (_balancesInFlight != null) return _balancesInFlight!;
 
     final future = _fetchBalances(forceRefresh: false);
@@ -472,8 +520,10 @@ class ExpenseService {
     }
   }
 
-  Future<Map<String, dynamic>> _fetchBalances({required bool forceRefresh}) async {
-    final localFallback = (!forceRefresh) ? await _readPersistedBalances() : <String, dynamic>{};
+  Future<Map<String, dynamic>> _fetchBalances(
+      {required bool forceRefresh}) async {
+    final localFallback =
+        (!forceRefresh) ? await _readPersistedBalances() : <String, dynamic>{};
 
     try {
       final response = await _api.get(ApiConfig.balances);
@@ -490,8 +540,11 @@ class ExpenseService {
             final user = item['user'];
             final amount = (item['amount'] as num?) ?? 0;
             if (user is Map<String, dynamic>) {
-              try { contacts.add(ContactModel.fromJson(user)); } catch (_) {}
-              final key = (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
+              try {
+                contacts.add(ContactModel.fromJson(user));
+              } catch (_) {}
+              final key =
+                  (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
               if (key != null && key.isNotEmpty) {
                 normalized[key] = (normalized[key] ?? 0) + amount.round();
               }
@@ -504,8 +557,11 @@ class ExpenseService {
             final user = item['user'];
             final amount = (item['amount'] as num?) ?? 0;
             if (user is Map<String, dynamic>) {
-              try { contacts.add(ContactModel.fromJson(user)); } catch (_) {}
-              final key = (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
+              try {
+                contacts.add(ContactModel.fromJson(user));
+              } catch (_) {}
+              final key =
+                  (user['_id'] as String?) ?? (user['phoneNumber'] as String?);
               if (key != null && key.isNotEmpty) {
                 normalized[key] = (normalized[key] ?? 0) - amount.round();
               }
@@ -523,8 +579,12 @@ class ExpenseService {
             await _isarService.upsertBalanceContacts(contacts);
           }
 
-          developer.log('[ExpenseService] /balances response: owesMe=${owesMe.length}, iOwe=${iOwe.length}, contacts=${contacts.length}, normalized=${normalized.length} entries', name: 'ExpenseService');
-          developer.log('[ExpenseService] /balances data: owesMe=$owesMe, iOwe=$iOwe', name: 'ExpenseService');
+          developer.log(
+              '[ExpenseService] /balances response: owesMe=${owesMe.length}, iOwe=${iOwe.length}, contacts=${contacts.length}, normalized=${normalized.length} entries',
+              name: 'ExpenseService');
+          developer.log(
+              '[ExpenseService] /balances data: owesMe=$owesMe, iOwe=$iOwe',
+              name: 'ExpenseService');
           return normalized;
         }
 
@@ -592,23 +652,41 @@ class ExpenseService {
     final safeLimit = limit < 1 ? 20 : limit;
     final cacheKey =
         'with:${(withUserId ?? 'all').trim()}:p:${(withUserPhone ?? '').trim()}:c:${(cursor ?? '').trim()}:l$safeLimit:s:${(search ?? '').trim()}';
-    _evictTimedCacheEntries(_timelineCache, _timelineCacheAt, _maxTimelineCacheEntries);
+    _evictTimedCacheEntries(
+        _timelineCache, _timelineCacheAt, _maxTimelineCacheEntries);
 
-    if (!forceRefresh && _timelineCache.containsKey(cacheKey) && _isFresh(_timelineCacheAt[cacheKey])) {
-      final cached = _timelineCache[cacheKey]!;
-      return TimelinePage(items: cached, nextCursor: null, hasMore: cached.length >= safeLimit);
+    if (!forceRefresh &&
+        _timelineCache.containsKey(cacheKey) &&
+        _isFresh(_timelineCacheAt[cacheKey])) {
+      return _timelineCache[cacheKey]!;
     }
 
     try {
       final qp = <String, dynamic>{'limit': safeLimit};
-      if (withUserId != null && withUserId.trim().isNotEmpty) qp['withUserId'] = withUserId.trim();
-      if (withUserPhone != null && withUserPhone.trim().isNotEmpty) qp['withUserPhone'] = withUserPhone.trim();
-      if (cursor != null && cursor.trim().isNotEmpty) qp['cursor'] = cursor.trim();
-      if (search != null && search.trim().isNotEmpty) qp['search'] = search.trim();
+      if (withUserId != null && withUserId.trim().isNotEmpty)
+        qp['withUserId'] = withUserId.trim();
+      if (withUserPhone != null && withUserPhone.trim().isNotEmpty)
+        qp['withUserPhone'] = withUserPhone.trim();
+      if (cursor != null && cursor.trim().isNotEmpty)
+        qp['cursor'] = cursor.trim();
+      if (search != null && search.trim().isNotEmpty)
+        qp['search'] = search.trim();
 
+      developer.log(
+        '[ExpenseService] GET ${ApiConfig.timeline} query=$qp',
+        name: 'ExpenseService',
+      );
       final response = await _api.get(ApiConfig.timeline, queryParameters: qp);
+      developer.log(
+        '[ExpenseService] timeline raw response=${response.data}',
+        name: 'ExpenseService',
+      );
       final data = response.data['data'];
       if (data is! Map<String, dynamic>) {
+        developer.log(
+          '[ExpenseService] timeline response shape unexpected: ${data.runtimeType}',
+          name: 'ExpenseService',
+        );
         return const TimelinePage(items: [], nextCursor: null, hasMore: false);
       }
 
@@ -619,27 +697,105 @@ class ExpenseService {
           .toList()
           .cast<Map<String, dynamic>>();
 
-      final nextCursor = data['cursor']?.toString();
-      final hasMore = (data['hasMore'] is bool) ? (data['hasMore'] as bool) : parsed.length >= safeLimit;
+      try {
+        final transactionLookup = {
+          for (final tx in await getTransactions(forceRefresh: false))
+            tx.transactionId: tx,
+        };
+        for (final item in parsed) {
+          if ((item['type'] as String?) != 'transaction') continue;
+          if (item['counterparty'] != null) continue;
 
-      _storeTimelineCache(cacheKey, parsed);
-      return TimelinePage(items: parsed, nextCursor: nextCursor, hasMore: hasMore);
+          final itemId =
+              (item['id'] ?? item['transactionId'])?.toString() ?? '';
+          final tx = transactionLookup[itemId];
+          if (tx == null) continue;
+
+          final counterparty = <String, dynamic>{};
+          if (tx.toUserId.trim().isNotEmpty) {
+            counterparty['_id'] = tx.toUserId;
+          }
+          if ((tx.toPhone ?? '').trim().isNotEmpty) {
+            counterparty['phoneNumber'] = tx.toPhone!.trim();
+          }
+          if (counterparty.isNotEmpty) {
+            item['counterparty'] = counterparty;
+          }
+        }
+      } catch (e) {
+        developer.log(
+          '[ExpenseService] timeline enrichment skipped: $e',
+          name: 'ExpenseService',
+        );
+      }
+
+      try {
+        final expenseLookup = {
+          for (final expense in await getExpenses(forceRefresh: false))
+            expense.uuid: expense,
+        };
+        for (final item in parsed) {
+          if ((item['type'] as String?) != 'expense') continue;
+
+          final itemId =
+              (item['expenseId'] ?? item['id'] ?? item['uuid'])?.toString() ??
+                  '';
+          final expense = expenseLookup[itemId];
+          if (expense == null) continue;
+
+          if (expense.participants.isNotEmpty) {
+            item['participantPhones'] = List<String>.from(expense.participants);
+          }
+          if (expense.paidBy.trim().isNotEmpty) {
+            item['paidBy'] = expense.paidBy;
+          }
+        }
+      } catch (e) {
+        developer.log(
+          '[ExpenseService] expense enrichment skipped: $e',
+          name: 'ExpenseService',
+        );
+      }
+
+      final nextCursor = (data['nextCursor'] ?? data['cursor'])?.toString();
+      final hasMoreValue = data['hasMore'];
+      final hasMore = hasMoreValue is bool
+          ? hasMoreValue
+          : (nextCursor != null && nextCursor.isNotEmpty)
+              ? true
+              : parsed.length >= safeLimit;
+
+      developer.log(
+        '[ExpenseService] timeline response items=${parsed.length} nextCursor=$nextCursor hasMore=$hasMore firstKeys=${parsed.isNotEmpty ? parsed.first.keys.take(12).toList() : const []}',
+        name: 'ExpenseService',
+      );
+
+      final page = TimelinePage(
+        items: parsed,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+      );
+      _storeTimelineCache(cacheKey, page);
+      return page;
     } catch (e) {
       if (_timelineCache.containsKey(cacheKey)) {
-        final cached = _timelineCache[cacheKey]!;
-        return TimelinePage(items: cached, nextCursor: null, hasMore: cached.length >= safeLimit);
+        return _timelineCache[cacheKey]!;
       }
       rethrow;
     }
   }
 
-  Future<List<dynamic>> getConversationByPhone(String phoneNumber, {bool forceRefresh = false}) async {
+  Future<List<dynamic>> getConversationByPhone(String phoneNumber,
+      {bool forceRefresh = false}) async {
     final target = _canonicalPhone(phoneNumber);
     if (target.isEmpty) return [];
     final cacheKey = 'phone:$target';
-    _evictTimedCacheEntries(_conversationCache, _conversationCacheAt, _maxConversationCacheEntries);
+    _evictTimedCacheEntries(
+        _conversationCache, _conversationCacheAt, _maxConversationCacheEntries);
 
-    if (!forceRefresh && _conversationCache.containsKey(cacheKey) && _isFresh(_conversationCacheAt[cacheKey])) {
+    if (!forceRefresh &&
+        _conversationCache.containsKey(cacheKey) &&
+        _isFresh(_conversationCacheAt[cacheKey])) {
       return _conversationCache[cacheKey]!;
     }
 
@@ -648,13 +804,15 @@ class ExpenseService {
     final timeline = <Map<String, dynamic>>[];
 
     for (final expense in expenses) {
-      final participantMatch = expense.participants.any((p) => _canonicalPhone(p) == target);
+      final participantMatch =
+          expense.participants.any((p) => _canonicalPhone(p) == target);
       final paidByMatch = _canonicalPhone(expense.paidBy) == target;
       if (!participantMatch && !paidByMatch) continue;
 
       final direction = paidByMatch ? 'they_paid' : 'you_paid';
       final splitCount = expense.participants.length + 1;
-      final amount = splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
+      final amount =
+          splitCount > 0 ? (expense.amount ~/ splitCount) : expense.amount;
 
       timeline.add({
         'type': 'expense',
