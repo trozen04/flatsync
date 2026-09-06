@@ -68,12 +68,16 @@ class _LoginScreenState extends State<LoginScreen> {
     final contactService = context.read<ContactService>();
 
     try {
+      debugPrint('=======================================================');
+      debugPrint('[LOGIN] 🚀 Starting login attempt for phone: $_phoneNumber');
+      debugPrint('=======================================================');
       developer.log('LoginScreen: login request ($_phoneNumber)',
           name: 'LoginScreen');
       final user = await authService.login(
         phoneNumber: _phoneNumber,
         pin: _pinController.text,
       );
+      debugPrint('[LOGIN] ✅ Login success: userId=${user.userId}, name=${user.name}');
       developer.log('LoginScreen: login response userId=${user.userId}',
           name: 'LoginScreen');
 
@@ -97,11 +101,15 @@ class _LoginScreenState extends State<LoginScreen> {
           MaterialPageRoute(builder: (_) => const AppShell()),
         );
       }
-    } catch (e) {
-      developer.log('Login error: $e');
+    } catch (e, stackTrace) {
+      debugPrint('🚨 ==================== [LOGIN ERROR] ====================');
+      debugPrint('🚨 Error: $e');
+      developer.log('Login error: $e', name: 'LoginScreen', error: e, stackTrace: stackTrace);
       if (mounted) {
         final errorMsg =
             authService.getAuthErrorMessage(e, flow: AuthFlow.login);
+        debugPrint('🚨 UI Error Message: $errorMsg');
+        debugPrint('🚨 =======================================================');
         CustomSnackBar.show(context, message: errorMsg, isError: true);
       }
     } finally {

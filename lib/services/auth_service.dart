@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
@@ -125,13 +126,19 @@ class AuthService {
         }
       }
 
-      if (serverError.isNotEmpty) return serverError;
+      if (serverError.isNotEmpty) {
+        debugPrint('[AuthService] Resolved server error message: "$serverError" for flow $flow');
+        return serverError;
+      }
+      debugPrint('[AuthService] Fallback error for flow $flow, status $statusCode');
       return 'Oops! Something went wrong';
     }
-    return NetworkErrorHandler.message(
+    final fallbackMsg = NetworkErrorHandler.message(
       error,
       fallback: 'Oops! Something went wrong',
     );
+    debugPrint('[AuthService] Network error message: "$fallbackMsg" for flow $flow');
+    return fallbackMsg;
   }
 
   Future<Map<String, dynamic>> sendSignupOtp(String phoneNumber) async {
@@ -191,29 +198,39 @@ class AuthService {
     required String pin,
   }) async {
     final normalizedPhone = _normalizePhone(phoneNumber);
-    final response = await _api.post(
-      ApiConfig.login,
-      data: {
-        'phoneNumber': normalizedPhone,
-        'pin': pin,
-      },
-    );
+    debugPrint('[AuthService] 📤 Calling POST ${ApiConfig.login} with phone: $normalizedPhone');
+    try {
+      final response = await _api.post(
+        ApiConfig.login,
+        data: {
+          'phoneNumber': normalizedPhone,
+          'pin': pin,
+        },
+      );
 
-    final data = response.data['data'];
-    final user = UserModel.fromJson(data['user']);
-    user.accessToken = data['accessToken'];
-    user.refreshToken = data['refreshToken'];
-    user.hashedPin = _hashPin(pin);
-    user.isLoggedIn = true;
+      final data = response.data['data'];
+      if (data == null) {
+        debugPrint('🚨 [AuthService] Response data["data"] is null: ${response.data}');
+      }
+      final user = UserModel.fromJson(data['user']);
+      user.accessToken = data['accessToken'];
+      user.refreshToken = data['refreshToken'];
+      user.hashedPin = _hashPin(pin);
+      user.isLoggedIn = true;
 
-    await _storage.write(key: 'access_token', value: user.accessToken);
-    await _storage.write(key: 'refresh_token', value: user.refreshToken);
-    await _storage.write(key: 'user_id', value: user.userId);
-    await _storage.write(key: 'hashed_pin', value: user.hashedPin);
-    _api.resetSessionInvalidationState();
+      await _storage.write(key: 'access_token', value: user.accessToken);
+      await _storage.write(key: 'refresh_token', value: user.refreshToken);
+      await _storage.write(key: 'user_id', value: user.userId);
+      await _storage.write(key: 'hashed_pin', value: user.hashedPin);
+      _api.resetSessionInvalidationState();
 
-    developer.log('AuthService: login success userId=${user.userId}', name: 'AuthService');
-    return user;
+      debugPrint('[AuthService] 📥 Login processed successfully for userId: ${user.userId}');
+      developer.log('AuthService: login success userId=${user.userId}', name: 'AuthService');
+      return user;
+    } catch (e) {
+      debugPrint('🚨 [AuthService] Login failed for $normalizedPhone: $e');
+      rethrow;
+    }
   }
 
   Future<void> verifyResetPinOtp({
@@ -277,13 +294,17 @@ class AuthService {
     required ContactService contactService,
     required IsarService isar,
   }) async {
-    final balances = await expenseService.getBalances(forceRefresh: true);
-    if (balances.isNotEmpty) {
-      final contacts = expenseService.getCachedBalanceContacts();
-      if (contacts.isNotEmpty) {
-        await contactService.upsertContactsByCanonical(isar, contacts);
-        contactService.notifyUpdate();
+    try {
+      final balances = await expenseService.getBalances(forceRefresh: true);
+      if (balances.isNotEmpty) {
+        final contacts = expenseService.getCachedBalanceContacts();
+        if (contacts.isNotEmpty) {
+          await contactService.upsertContactsByCanonical(isar, contacts);
+          contactService.notifyUpdate();
+        }
       }
+    } catch (e) {
+      debugPrint('[AuthService] ⚠️ syncContactsOnLogin background sync error: $e');
     }
   }
 

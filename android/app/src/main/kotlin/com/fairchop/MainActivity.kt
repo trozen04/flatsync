@@ -1,4 +1,4 @@
-package com.trozen.flatsync
+package com.fairchop
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

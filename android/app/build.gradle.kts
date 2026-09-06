@@ -15,7 +15,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.trozen.flatsync"
+    namespace = "com.fairchop"
     compileSdk = 35
     ndkVersion = "28.2.13676358"
 
@@ -30,7 +30,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.trozen.flatsync"
+        applicationId = "com.fairchop"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
         versionCode = 21

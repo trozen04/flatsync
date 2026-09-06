@@ -12,7 +12,7 @@
     
 
     <application
-        android:label="SettleFlow"
+        android:label="FairChop"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:extractNativeLibs="false">

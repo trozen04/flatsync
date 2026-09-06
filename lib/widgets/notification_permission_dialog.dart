@@ -154,7 +154,7 @@ Future<bool?> showNotificationPermissionDialog(
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Why SettleFlow asks',
+                    'Why FairChop asks',
                     style: AppTextStyles.titleMedium(sheetContext).copyWith(
                       fontWeight: FontWeight.w700,
                     ),

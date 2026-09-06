@@ -345,7 +345,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final biometric = context.read<BiometricAuthService>();
       if (enabled) {
         final ok = await biometric.authenticate(
-          reason: 'Confirm biometric unlock for SettleFlow',
+          reason: 'Confirm biometric unlock for FairChop',
         );
         if (!ok) {
           if (mounted) {
@@ -803,7 +803,7 @@ class _ProfileHeroCard extends StatelessWidget {
           ),
           AppDimensions.h10(context),
           Text(
-            'A compact view of your SettleFlow profile.',
+            'A compact view of your FairChop profile.',
             style: AppTextStyles.bodySmall(context).copyWith(
               color: Colors.white.withValues(alpha: 0.84),
             ),

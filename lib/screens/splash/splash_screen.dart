@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flatsync/constants/app_colors.dart';
 import 'package:flatsync/constants/app_dimensions.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../auth/biometric_gate_screen.dart';
 import '../auth/login_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../shell/app_shell.dart';
+import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/app_preferences_service.dart';
 import '../../utils/image_assets.dart';
@@ -62,9 +64,13 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigate() async {
+    final apiService = context.read<ApiService>();
     final authService = context.read<AuthService>();
     final preferences = context.read<AppPreferencesService>();
     final prefs = await SharedPreferences.getInstance();
+
+    // Ping health in background to wake up backend if not already waking up
+    unawaited(apiService.pingHealth());
 
     final isLoggedIn = await authService
         .isLoggedIn()

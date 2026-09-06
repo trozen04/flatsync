@@ -339,7 +339,7 @@ class _BrandHeader extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Text(
-          'SettleFlow',
+          'FairChop',
           style: FlutterFontStyle.textStyle(
             fontSize: 20,
             fontWeight: FontWeight.w800,

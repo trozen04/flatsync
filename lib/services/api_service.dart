@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/api_config.dart';
@@ -31,22 +32,41 @@ class ApiService {
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }
+        final requestLog =
+            '[API REQ] --> ${options.method} ${options.uri}';
+        debugPrint('🔵 $requestLog');
         developer.log(
-          '[API] --> ${options.method} ${options.baseUrl}${options.path}',
+          requestLog,
           name: 'ApiService',
         );
         return handler.next(options);
       },
       onResponse: (response, handler) {
+        final responseLog =
+            '[API RES] <-- ${response.statusCode} ${response.requestOptions.method} ${response.requestOptions.uri}';
+        debugPrint('🟢 $responseLog');
         developer.log(
-          '[API] <-- ${response.statusCode} ${response.requestOptions.method} ${response.requestOptions.path}',
+          responseLog,
           name: 'ApiService',
         );
         return handler.next(response);
       },
       onError: (error, handler) async {
+        final fullUri = error.requestOptions.uri.toString();
+        final status = error.response?.statusCode?.toString() ?? 'NO_STATUS';
+        debugPrint('🔴 ==================== [API ERROR] ====================');
+        debugPrint('🔴 Method: ${error.requestOptions.method}');
+        debugPrint('🔴 URL: $fullUri');
+        debugPrint('🔴 Status Code: $status');
+        debugPrint('🔴 Error Type: ${error.type}');
+        debugPrint('🔴 Error Message: ${error.message}');
+        if (error.response?.data != null) {
+          debugPrint('🔴 Response Body: ${error.response?.data}');
+        }
+        debugPrint('🔴 ====================================================');
+
         developer.log(
-          '[API] ERROR ${error.response?.statusCode} ${error.requestOptions.method} ${error.requestOptions.path} | ${error.response?.data ?? error.message}',
+          '[API] ERROR $status ${error.requestOptions.method} ${error.requestOptions.path} | ${error.response?.data ?? error.message}',
           name: 'ApiService',
           error: error,
         );
@@ -239,6 +259,33 @@ class ApiService {
 
   Future<Response> delete(String path) async {
     return await _dio.delete(path);
+  }
+
+  /// Ping health endpoint on app startup to wake up backend (e.g. Render spin-up)
+  Future<bool> pingHealth() async {
+    try {
+      final healthUrl = ApiConfig.healthUrl;
+      developer.log('[API] Pinging backend health endpoint: $healthUrl', name: 'ApiService');
+      final response = await _dio.get(
+        healthUrl,
+        options: Options(
+          sendTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 15),
+        ),
+      );
+      final isSuccess = response.statusCode == 200;
+      developer.log(
+        '[API] Health check status: ${response.statusCode}',
+        name: 'ApiService',
+      );
+      return isSuccess;
+    } catch (e) {
+      developer.log(
+        '[API] Health check pinged (backend waking up): $e',
+        name: 'ApiService',
+      );
+      return false;
+    }
   }
 
   void clearToken() {

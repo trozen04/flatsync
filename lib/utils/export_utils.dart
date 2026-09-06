@@ -33,12 +33,12 @@ class ExportUtils {
     try {
       final csv = buildCsv(items);
       final dir = await getTemporaryDirectory();
-      final fileName = 'settleflow_history_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final fileName = 'fairchop_history_${DateTime.now().millisecondsSinceEpoch}.csv';
       final file = File('${dir.path}/$fileName');
       await file.writeAsString(csv);
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'text/csv')],
-        subject: 'SettleFlow History Export',
+        subject: 'FairChop History Export',
         text: AppInfo.inviteMessage,
       );
     } catch (e) {

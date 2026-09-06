@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -42,7 +43,7 @@ Future<void> _initLocalNotifications() async {
   // Create notification channel for Android
   const channel = AndroidNotificationChannel(
     'flatsync_channel',
-    'SettleFlow Notifications',
+    'FairChop Notifications',
     description: 'Expense and transaction alerts',
     importance: Importance.high,
   );
@@ -78,7 +79,7 @@ Future<void> _showLocalNotification(RemoteMessage message) async {
     const NotificationDetails(
       android: AndroidNotificationDetails(
         'flatsync_channel',
-        'FlatSync Notifications',
+        'FairChop Notifications',
         importance: Importance.high,
         priority: Priority.high,
         icon: '@mipmap/ic_launcher',
@@ -123,6 +124,9 @@ Future<void> main() async {
   await isarService.openDB();
 
   final apiService = ApiService();
+  // Ping backend health check early to wake up server (e.g. Render spin-up)
+  unawaited(apiService.pingHealth());
+
   final authService = AuthService(apiService);
   final appPreferencesService = AppPreferencesService();
   await appPreferencesService.init();
@@ -180,7 +184,7 @@ class FlatSyncApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SettleFlow',
+      title: 'FairChop',
       navigatorKey: _rootNavigatorKey,
       theme: AppTheme.lightTheme,
       themeMode: ThemeMode.light,

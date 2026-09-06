@@ -1,26 +1,34 @@
+import 'package:flutter/foundation.dart';
+
 class ApiConfig {
   // Environment-based configuration
-  static const bool isProduction = bool.fromEnvironment('dart.vm.product');
   static const String baseUrlOverride =
       String.fromEnvironment('FLATSYNC_API_BASE_URL');
 
-  /// Production URL - UPDATE THIS WITH YOUR ACTUAL PRODUCTION URL
-  // static const String productionUrl =
-  //     'https://flatsync-backend.onrender.com/api';
-
+  /// Production URL (Live Render Server)
   static const String productionUrl =
-      'https://flatsyncbackend-production.up.railway.app/api';
+      'https://flatsync-backend.onrender.com/api';
 
-  /// Development URL - Use your computer's IP address
-  static const String developmentUrl = 'http://192.168.1.42:5000/api';
+  /// Development URL (Local Server)
+  static const String developmentUrl = 'http://192.168.1.36:5000/api';
 
-  // Auto-select based on build mode
-  static String get baseUrl => baseUrlOverride.isNotEmpty
-      ? baseUrlOverride
-      : (isProduction ? productionUrl : developmentUrl);
-  // static String get baseUrl => productionUrl;
+  // Auto-select based on kDebugMode
+  static String get baseUrl {
+    if (baseUrlOverride.isNotEmpty) return baseUrlOverride;
+    return kDebugMode ? developmentUrl : productionUrl;
+  }
 
   static const Duration timeout = Duration(seconds: 30);
+
+  // Health check endpoint
+  static const String health = '/health';
+  static String get healthUrl {
+    final base = baseUrl;
+    if (base.endsWith('/api')) {
+      return '${base.substring(0, base.length - 4)}/health';
+    }
+    return '$base/health';
+  }
 
   // Auth endpoints
   static const String sendOtp = '/auth/send-signup-otp';
