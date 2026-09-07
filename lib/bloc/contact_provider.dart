@@ -24,10 +24,32 @@ class ContactProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final contacts = await _isarService.isar.contactModels
+      final allContacts = await _isarService.isar.contactModels
           .filter()
           .idGreaterThan(-1)
           .findAll();
+
+      final uniqueMap = <String, ContactModel>{};
+      for (final contact in allContacts) {
+        final key = _canonicalPhone(contact.phoneNumber);
+        if (key.isEmpty) continue;
+        final prev = uniqueMap[key];
+        if (prev == null) {
+          uniqueMap[key] = contact;
+        } else {
+          final prevScore = (!_looksLikePhoneName(prev.name) ? 2 : 0) +
+              ((prev.contactId?.isNotEmpty ?? false) ? 2 : 0) +
+              ((prev.phoneNumber?.startsWith('+') ?? false) ? 1 : 0);
+          final currScore = (!_looksLikePhoneName(contact.name) ? 2 : 0) +
+              ((contact.contactId?.isNotEmpty ?? false) ? 2 : 0) +
+              ((contact.phoneNumber?.startsWith('+') ?? false) ? 1 : 0);
+          if (currScore > prevScore) {
+            uniqueMap[key] = contact;
+          }
+        }
+      }
+
+      final contacts = uniqueMap.values.toList();
       contacts.sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
       _contacts = contacts;
     } catch (e) {

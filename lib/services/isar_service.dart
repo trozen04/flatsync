@@ -1,6 +1,7 @@
 import 'package:flatsync/models/expense_model.dart';
 import 'package:flatsync/models/user_model.dart';
 import 'package:flatsync/models/contact_model.dart';
+import 'package:flatsync/utils/phone_utils.dart';
 import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -99,9 +100,32 @@ class IsarService {
     final searchTerm = trimmedQuery.toLowerCase();
     final allContacts = await isar.contactModels.filter().idGreaterThan(-1).findAll();
 
+    // Deduplicate by canonical phone number so different formatting variants merge into one entity
+    final uniqueMap = <String, ContactModel>{};
+    for (final contact in allContacts) {
+      final key = PhoneUtils.canonical(contact.phoneNumber);
+      if (key.isEmpty) continue;
+      final prev = uniqueMap[key];
+      if (prev == null) {
+        uniqueMap[key] = contact;
+      } else {
+        final prevScore = (!PhoneUtils.looksLikePhoneName(prev.name) ? 2 : 0) +
+            ((prev.contactId?.isNotEmpty ?? false) ? 2 : 0) +
+            ((prev.phoneNumber?.startsWith('+') ?? false) ? 1 : 0);
+        final currScore = (!PhoneUtils.looksLikePhoneName(contact.name) ? 2 : 0) +
+            ((contact.contactId?.isNotEmpty ?? false) ? 2 : 0) +
+            ((contact.phoneNumber?.startsWith('+') ?? false) ? 1 : 0);
+        if (currScore > prevScore) {
+          uniqueMap[key] = contact;
+        }
+      }
+    }
+
+    final deduplicated = uniqueMap.values.toList();
+
     final filtered = trimmedQuery.isEmpty
-        ? allContacts
-        : allContacts.where((contact) {
+        ? deduplicated
+        : deduplicated.where((contact) {
             final name = (contact.name ?? '').toLowerCase();
             final phone = (contact.phoneNumber ?? '').toLowerCase();
             return name.contains(searchTerm) || phone.contains(searchTerm);
@@ -149,20 +173,42 @@ class IsarService {
     });
   }
 
-  // Upsert contacts from balance response — adds missing, updates existing
+  // Upsert contacts from balance response — adds missing, updates existing by canonical phone
   Future<void> upsertBalanceContacts(List<ContactModel> contacts) async {
     if (contacts.isEmpty) return;
+    final allExisting = await isar.contactModels.filter().idGreaterThan(-1).findAll();
+    final existingByCanonical = <String, ContactModel>{};
+    for (final c in allExisting) {
+      final key = PhoneUtils.canonical(c.phoneNumber);
+      if (key.isNotEmpty) existingByCanonical[key] = c;
+    }
+
     await isar.writeTxn(() async {
       for (final contact in contacts) {
-        final phone = contact.phoneNumber;
-        if (phone == null || phone.isEmpty) continue;
-        final existing = await isar.contactModels
-            .filter()
-            .phoneNumberEqualTo(phone)
-            .findFirst();
+        final rawPhone = PhoneUtils.normalizeRaw(contact.phoneNumber ?? '');
+        final key = PhoneUtils.canonical(rawPhone);
+        if (key.isEmpty) continue;
+
+        contact.phoneNumber = rawPhone;
+        final existing = existingByCanonical[key];
         if (existing == null) {
           contact.updatedAt = DateTime.now();
           await isar.contactModels.put(contact);
+          existingByCanonical[key] = contact;
+        } else {
+          // Merge metadata into existing contact
+          if (contact.contactId?.isNotEmpty ?? false) {
+            existing.contactId = contact.contactId;
+            existing.isRegistered = contact.isRegistered;
+          }
+          if (rawPhone.startsWith('+')) {
+            existing.phoneNumber = rawPhone;
+          }
+          if (!PhoneUtils.looksLikePhoneName(contact.name)) {
+            existing.name = contact.name;
+          }
+          existing.updatedAt = DateTime.now();
+          await isar.contactModels.put(existing);
         }
       }
     });

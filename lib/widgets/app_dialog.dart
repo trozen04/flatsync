@@ -4,6 +4,7 @@ import '../constants/app_colors.dart';
 import '../constants/app_shadows.dart';
 import '../constants/app_text_styles.dart';
 import '../utils/form_validation.dart';
+import '../utils/phone_utils.dart';
 import 'custom_button.dart';
 
 // ─────────────────────────────────────────────
@@ -487,9 +488,12 @@ class _AppManualContactDialogState extends State<AppManualContactDialog> {
     }
 
     _setError(null);
+    final finalPhone = _phoneNumber.trim().isNotEmpty
+        ? PhoneUtils.normalizeRaw(_phoneNumber.trim())
+        : PhoneUtils.normalizeRaw(_phoneController.text.trim());
     Navigator.pop(context, {
       'name': _nameController.text.trim(),
-      'phone': _phoneNumber.trim(),
+      'phone': finalPhone,
     });
   }
 

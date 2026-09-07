@@ -20,6 +20,7 @@ import '../../services/interstitial_ad_service.dart';
 import '../../utils/custom_snackbar.dart';
 import '../../utils/network_error_handler.dart';
 import '../../utils/money_utils.dart';
+import '../../utils/phone_utils.dart';
 import '../../widgets/contact_identity_details.dart';
 import '../contacts/contact_selection_screen.dart';
 
@@ -579,9 +580,9 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
   void initState() {
     super.initState();
     for (final contact in widget.initiallySelectedContacts) {
-      final phone = contact.phoneNumber;
-      if (phone != null && phone.isNotEmpty) {
-        _selectedContactsByPhone[phone] = contact;
+      final raw = PhoneUtils.normalizeRaw(contact.phoneNumber ?? '');
+      if (raw.isNotEmpty) {
+        _selectedContactsByPhone[raw] = contact;
       }
     }
     _scrollController.addListener(_onScroll);
@@ -665,30 +666,37 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
   }
 
   void _toggleSelection(ContactModel contact) {
-    final phone = contact.phoneNumber;
-    if (phone == null || phone.isEmpty) return;
+    final rawPhone = PhoneUtils.normalizeRaw(contact.phoneNumber ?? '');
+    final canonicalKey = PhoneUtils.canonical(rawPhone);
+    if (canonicalKey.isEmpty) return;
     setState(() {
-      if (_selected.contains(phone)) {
-        _selected.remove(phone);
-        _selectedContactsByPhone.remove(phone);
+      final existingIndex = _selected.indexWhere(
+        (p) => PhoneUtils.canonical(p) == canonicalKey,
+      );
+      if (existingIndex >= 0) {
+        final removedPhone = _selected.removeAt(existingIndex);
+        _selectedContactsByPhone.remove(removedPhone);
       } else {
-        _selected.add(phone);
-        _selectedContactsByPhone[phone] = contact;
+        _selected.add(rawPhone);
+        _selectedContactsByPhone[rawPhone] = contact;
       }
     });
   }
 
   List<ContactModel> _buildSelectionResult() {
-    return _selected
-        .map(
-          (phone) =>
-              _selectedContactsByPhone[phone] ??
-              _contacts.firstWhere(
-                (contact) => contact.phoneNumber == phone,
-                orElse: () => ContactModel(phoneNumber: phone, name: phone),
-              ),
-        )
-        .toList();
+    return _selected.map((phone) {
+      final canonical = PhoneUtils.canonical(phone);
+      for (final entry in _selectedContactsByPhone.entries) {
+        if (PhoneUtils.canonical(entry.key) == canonical) {
+          return entry.value;
+        }
+      }
+
+      return _contacts.firstWhere(
+        (contact) => PhoneUtils.canonical(contact.phoneNumber) == canonical,
+        orElse: () => ContactModel(phoneNumber: phone, name: phone),
+      );
+    }).toList();
   }
 
   @override
@@ -805,8 +813,10 @@ class _ParticipantPickerSheetState extends State<_ParticipantPickerSheet> {
 
                             final contact = _contacts[index];
                             final phone = contact.phoneNumber;
-                            final selected =
-                                phone != null && _selected.contains(phone);
+                            final canonicalKey = PhoneUtils.canonical(phone);
+                            final selected = canonicalKey.isNotEmpty &&
+                                _selected.any((p) =>
+                                    PhoneUtils.canonical(p) == canonicalKey);
 
                             final bg = selected
                                 ? scheme.primaryContainer

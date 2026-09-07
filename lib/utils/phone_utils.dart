@@ -1,10 +1,22 @@
 class PhoneUtils {
-  /// Strips all non-digit/non-plus chars, preserves + prefix.
+  /// Strips non-digits and normalizes to standard +countrycode format (e.g. +91XXXXXXXXXX).
   static String normalizeRaw(String phone) {
     final trimmed = phone.trim();
-    final hasPlus = trimmed.startsWith('+');
     final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
-    return hasPlus ? '+$digits' : digits;
+    if (digits.isEmpty) return '';
+
+    // Standard 10-digit Indian mobile number -> +91XXXXXXXXXX
+    if (digits.length == 10) return '+91$digits';
+    // 11-digit with leading 0 (e.g. 09876543210) -> +91XXXXXXXXXX
+    if (digits.length == 11 && digits.startsWith('0')) {
+      return '+91${digits.substring(1)}';
+    }
+    // 12-digit starting with 91 -> +91XXXXXXXXXX
+    if (digits.length == 12 && digits.startsWith('91')) {
+      return '+$digits';
+    }
+    if (trimmed.startsWith('+')) return '+$digits';
+    return '+$digits';
   }
 
   /// For matching/dedup only — returns last 10 digits (works for IN + most countries).

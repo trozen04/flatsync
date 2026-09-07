@@ -10,7 +10,7 @@ class ApiConfig {
       'https://flatsync-backend.onrender.com/api';
 
   /// Development URL (Local Server)
-  static const String developmentUrl = 'http://192.168.1.36:5000/api';
+  static const String developmentUrl = 'http://192.168.1.50:5000/api';
 
   // Auto-select based on kDebugMode
   static String get baseUrl {

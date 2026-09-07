@@ -184,8 +184,9 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
         final phone = _canonicalPhone(rawPhone);
         final registered = registeredPhones[phone];
         if (registered != null) {
-          if (_looksLikePhoneName(registered.name))
+          if (_looksLikePhoneName(registered.name)) {
             registered.name = contact.displayName;
+          }
           // Preserve raw phone with country code if registered model has only 10 digits
           if ((registered.phoneNumber?.length ?? 0) <= 10) {
             registered.phoneNumber = rawPhone;

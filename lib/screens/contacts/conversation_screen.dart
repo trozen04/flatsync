@@ -40,9 +40,9 @@ class ConversationScreen extends StatefulWidget {
 
 class _ConversationScreenState extends State<ConversationScreen> {
   List<dynamic> _transactions = [];
+  bool _initialLoading = true;
   bool _syncing = false;
   bool _serverSyncing = false;
-  bool _submitting = false;
   bool _loadingMore = false;
   bool _hasMore = true;
   String? _nextCursor;
@@ -66,10 +66,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _loadLocalFirst() async {
-    if (mounted) setState(() => _syncing = true);
     try {
       final expenseService = context.read<ExpenseService>();
-      final contactId = await _ensureResolvedContactId();
+      final contactId = widget.contact.contactId;
       late final List<dynamic> localData;
 
       if (contactId != null && contactId.isNotEmpty) {
@@ -96,7 +95,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
           _transactions = localData;
           _balance = balance;
           _hasMore = _hasMore || localData.length >= 20;
-          _syncing = false;
+          if (localData.isNotEmpty) {
+            _initialLoading = false;
+            _syncing = false;
+          } else {
+            _syncing = true;
+          }
         });
       }
     } catch (e) {
@@ -104,12 +108,40 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (mounted) setState(() => _syncing = false);
     }
 
+    // Trigger background silent synchronization
     _syncFromServer();
+  }
+
+  List<dynamic> _mergeServerDataWithOptimistic(List<dynamic> serverItems) {
+    final serverIds = serverItems
+        .map(_itemIdentifier)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    final pendingItems = _transactions.where((e) {
+      if (e is! Map<String, dynamic>) return false;
+      final status = e['status']?.toString();
+      if (status != 'syncing' && status != 'failed') return false;
+      final clientUuid = _itemIdentifier(e);
+      return !serverIds.contains(clientUuid);
+    }).toList();
+
+    return [...pendingItems, ...serverItems];
+  }
+
+  String _itemIdentifier(dynamic item) {
+    if (item is! Map<String, dynamic>) return '';
+    return (item['clientUuid'] ??
+            item['id'] ??
+            item['expenseId'] ??
+            item['transactionId'] ??
+            '')
+        .toString();
   }
 
   Future<void> _syncFromServer() async {
     if (_serverSyncing) return;
-    if (mounted) setState(() => _syncing = true);
+    if (_transactions.isEmpty && mounted) setState(() => _syncing = true);
 
     _serverSyncing = true;
     try {
@@ -138,7 +170,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
       if (mounted) {
         setState(() {
-          _transactions = serverData;
+          _transactions = _mergeServerDataWithOptimistic(serverData);
           _balance = balance;
           _hasMore = _hasMore || serverData.length >= 20;
         });
@@ -147,7 +179,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
       developer.log('Sync conversation error: $e');
     } finally {
       _serverSyncing = false;
-      if (mounted) setState(() => _syncing = false);
+      if (mounted) {
+        setState(() {
+          _syncing = false;
+          _initialLoading = false;
+        });
+      }
     }
   }
 
@@ -667,9 +704,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _addExpenseFromChat() async {
-    if (_submitting) return;
     final phone = widget.contact.phoneNumber;
     final overlay = Overlay.of(context);
+    final expenseService = context.read<ExpenseService>();
     if (phone == null || phone.isEmpty) {
       CustomSnackBar.showOnOverlay(
         overlay,
@@ -679,45 +716,100 @@ class _ConversationScreenState extends State<ConversationScreen> {
       return;
     }
 
-    final expenseService = context.read<ExpenseService>();
     final input = await _showEntryDialog(isTransaction: false);
     if (input == null) return;
 
-    if (mounted) setState(() => _submitting = true);
-    try {
-      final amount = (input['amountPaise'] as num).toInt();
-      final description = (input['description'] as String?)?.trim();
-      await expenseService.createExpense(
-        description: (description == null || description.isEmpty)
-            ? 'Expense'
-            : description,
-        totalAmount: amount,
-        participants: [phone],
-      );
-      _interstitialAd.onExpenseAdded();
-      await _syncFromServer();
-    } catch (e) {
-      developer.log('Add chat expense error: $e');
-      if (!mounted) return;
-      CustomSnackBar.showOnOverlay(
-        overlay,
-        message: NetworkErrorHandler.moneyWrite(e),
-        isError: true,
-      );
-    } finally {
-      if (mounted) setState(() => _submitting = false);
+    final amount = (input['amountPaise'] as num).toInt();
+    final rawDesc = (input['description'] as String?)?.trim();
+    final description = (rawDesc == null || rawDesc.isEmpty) ? 'Expense' : rawDesc;
+    final clientUuid = 'temp_${DateTime.now().microsecondsSinceEpoch}';
+
+    final yourShare = amount ~/ 2;
+    final theyOwe = amount - yourShare;
+
+    final optimisticItem = <String, dynamic>{
+      'id': clientUuid,
+      'clientUuid': clientUuid,
+      'expenseId': clientUuid,
+      'type': 'expense',
+      'amount': yourShare,
+      'totalAmount': amount,
+      'signedAmount': theyOwe,
+      'direction': 'you_paid',
+      'description': description,
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'status': 'syncing',
+      'createdBy': _currentUserId,
+      'participantPhones': [phone],
+      'participants': 1,
+    };
+
+    final contactKey =
+        (widget.contact.contactId ?? widget.contact.phoneNumber ?? '').trim();
+
+    if (mounted) {
+      setState(() {
+        _transactions = [optimisticItem, ..._transactions];
+        _balance += theyOwe;
+      });
     }
+
+    unawaited(
+        expenseService.saveOptimisticTimelineItem(contactKey, optimisticItem));
+
+    // Detached background synchronization
+    unawaited(() async {
+      try {
+        final model = await expenseService.createExpense(
+          description: description,
+          totalAmount: amount,
+          participants: [phone],
+        );
+        if (mounted) {
+          setState(() {
+            final idx = _transactions
+                .indexWhere((e) => _itemIdentifier(e) == clientUuid);
+            if (idx != -1) {
+              final updated =
+                  Map<String, dynamic>.from(_transactions[idx] as Map);
+              updated['status'] = 'synced';
+              updated['expenseId'] = model.uuid;
+              updated['id'] = model.uuid;
+              _transactions[idx] = updated;
+            }
+          });
+        }
+        _interstitialAd.onExpenseAdded();
+        await _syncFromServer();
+      } catch (e) {
+        developer.log('Detached expense sync error: $e');
+        if (mounted) {
+          setState(() {
+            final idx = _transactions
+                .indexWhere((e) => _itemIdentifier(e) == clientUuid);
+            if (idx != -1) {
+              final updated =
+                  Map<String, dynamic>.from(_transactions[idx] as Map);
+              updated['status'] = 'failed';
+              _transactions[idx] = updated;
+            }
+          });
+          CustomSnackBar.showOnOverlay(
+            overlay,
+            message: 'Could not sync expense with server. Tap entry to retry.',
+            isError: true,
+          );
+        }
+      }
+    }());
   }
 
   Future<void> _addTransactionFromChat() async {
-    if (_submitting) return;
-    final expenseService = context.read<ExpenseService>();
     final overlay = Overlay.of(context);
+    final expenseService = context.read<ExpenseService>();
     final resolvedId = await _ensureResolvedContactId();
     final toPhone = widget.contact.phoneNumber;
 
-    // Only use resolvedId as toUserId if it looks like a UUID (registered user)
-    // Pending users have phone number as their _id — send as toPhone instead
     final isUuid = resolvedId != null &&
         resolvedId.isNotEmpty &&
         !resolvedId.startsWith('+') &&
@@ -736,29 +828,183 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final input = await _showEntryDialog(isTransaction: true);
     if (input == null) return;
 
-    if (mounted) setState(() => _submitting = true);
+    final amount = (input['amountPaise'] as num).toInt();
+    final clientUuid = 'temp_${DateTime.now().microsecondsSinceEpoch}';
+
+    final optimisticItem = <String, dynamic>{
+      'id': clientUuid,
+      'clientUuid': clientUuid,
+      'transactionId': clientUuid,
+      'type': 'transaction',
+      'amount': amount,
+      'signedAmount': amount,
+      'direction': 'sent',
+      'description': 'Sent payment',
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'status': 'syncing',
+      'counterparty': {
+        if (toUserId != null) '_id': toUserId,
+        if (effectivePhone != null) 'phoneNumber': effectivePhone,
+      },
+    };
+
+    final contactKey =
+        (widget.contact.contactId ?? widget.contact.phoneNumber ?? '').trim();
+
+    if (mounted) {
+      setState(() {
+        _transactions = [optimisticItem, ..._transactions];
+        _balance += amount;
+      });
+    }
+
+    unawaited(
+        expenseService.saveOptimisticTimelineItem(contactKey, optimisticItem));
+
+    // Detached background synchronization
+    unawaited(() async {
+      try {
+        developer.log(
+            '[ConversationScreen] createTransaction toUserId=$toUserId toPhone=$effectivePhone amount=$amount');
+        await expenseService.createTransaction(
+          toUserId: toUserId,
+          toPhone: effectivePhone,
+          amount: amount,
+        );
+        if (mounted) {
+          setState(() {
+            final idx = _transactions
+                .indexWhere((e) => _itemIdentifier(e) == clientUuid);
+            if (idx != -1) {
+              final updated =
+                  Map<String, dynamic>.from(_transactions[idx] as Map);
+              updated['status'] = 'synced';
+              _transactions[idx] = updated;
+            }
+          });
+        }
+        _interstitialAd.onExpenseAdded();
+        await _syncFromServer();
+      } catch (e) {
+        developer.log('Detached transaction sync error: $e');
+        if (mounted) {
+          setState(() {
+            final idx = _transactions
+                .indexWhere((e) => _itemIdentifier(e) == clientUuid);
+            if (idx != -1) {
+              final updated =
+                  Map<String, dynamic>.from(_transactions[idx] as Map);
+              updated['status'] = 'failed';
+              _transactions[idx] = updated;
+            }
+          });
+          CustomSnackBar.showOnOverlay(
+            overlay,
+            message:
+                'Could not sync transaction with server. Tap entry to retry.',
+            isError: true,
+          );
+        }
+      }
+    }());
+  }
+
+  Future<void> _retryFailedItem(Map<String, dynamic> item) async {
+    final clientUuid = _itemIdentifier(item);
+    final type = item['type']?.toString();
+    if (clientUuid.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        final idx =
+            _transactions.indexWhere((e) => _itemIdentifier(e) == clientUuid);
+        if (idx != -1) {
+          final updated = Map<String, dynamic>.from(_transactions[idx] as Map);
+          updated['status'] = 'syncing';
+          _transactions[idx] = updated;
+        }
+      });
+    }
+
+    final expenseService = context.read<ExpenseService>();
+    final overlay = Overlay.of(context);
+
     try {
-      final amount = (input['amountPaise'] as num).toInt();
-      developer.log(
-          '[ConversationScreen] createTransaction toUserId=$toUserId toPhone=$effectivePhone amount=$amount');
-      await expenseService.createTransaction(
-        toUserId: toUserId,
-        toPhone: effectivePhone,
-        amount: amount,
-      );
+      if (type == 'expense') {
+        final totalAmount = (item['totalAmount'] as num?)?.toInt() ??
+            ((item['amount'] as num?)?.toInt() ?? 0) * 2;
+        final desc = item['description']?.toString() ?? 'Expense';
+        final phone = widget.contact.phoneNumber;
+        if (phone != null && phone.isNotEmpty) {
+          final model = await expenseService.createExpense(
+            description: desc,
+            totalAmount: totalAmount,
+            participants: [phone],
+          );
+          if (mounted) {
+            setState(() {
+              final idx = _transactions
+                  .indexWhere((e) => _itemIdentifier(e) == clientUuid);
+              if (idx != -1) {
+                final updated =
+                    Map<String, dynamic>.from(_transactions[idx] as Map);
+                updated['status'] = 'synced';
+                updated['expenseId'] = model.uuid;
+                updated['id'] = model.uuid;
+                _transactions[idx] = updated;
+              }
+            });
+          }
+        }
+      } else if (type == 'transaction') {
+        final amount = (item['amount'] as num?)?.toInt() ?? 0;
+        final resolvedId = await _ensureResolvedContactId();
+        final toPhone = widget.contact.phoneNumber;
+        final isUuid = resolvedId != null &&
+            resolvedId.isNotEmpty &&
+            !resolvedId.startsWith('+') &&
+            RegExp(r'^[0-9a-f-]{36}$').hasMatch(resolvedId);
+        final toUserId = isUuid ? resolvedId : null;
+        final effectivePhone = !isUuid ? (toPhone ?? resolvedId) : null;
+
+        await expenseService.createTransaction(
+          toUserId: toUserId,
+          toPhone: effectivePhone,
+          amount: amount,
+        );
+        if (mounted) {
+          setState(() {
+            final idx = _transactions
+                .indexWhere((e) => _itemIdentifier(e) == clientUuid);
+            if (idx != -1) {
+              final updated =
+                  Map<String, dynamic>.from(_transactions[idx] as Map);
+              updated['status'] = 'synced';
+              _transactions[idx] = updated;
+            }
+          });
+        }
+      }
       _interstitialAd.onExpenseAdded();
       await _syncFromServer();
     } catch (e) {
-      developer.log('Add chat transaction error: $e');
-      if (!mounted) return;
-      CustomSnackBar.showOnOverlay(
-        overlay,
-        message: NetworkErrorHandler.message(e,
-            fallback: 'Failed to add transaction'),
-        isError: true,
-      );
-    } finally {
-      if (mounted) setState(() => _submitting = false);
+      if (mounted) {
+        setState(() {
+          final idx =
+              _transactions.indexWhere((e) => _itemIdentifier(e) == clientUuid);
+          if (idx != -1) {
+            final updated =
+                Map<String, dynamic>.from(_transactions[idx] as Map);
+            updated['status'] = 'failed';
+            _transactions[idx] = updated;
+          }
+        });
+        CustomSnackBar.showOnOverlay(
+          overlay,
+          message: 'Retry failed: ${NetworkErrorHandler.message(e)}',
+          isError: true,
+        );
+      }
     }
   }
 
@@ -793,67 +1039,73 @@ class _ConversationScreenState extends State<ConversationScreen> {
             ),
         ],
       ),
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-              decoration: BoxDecoration(
-                color: balanceColor.withValues(alpha: 0.1),
-                border: Border(
-                  bottom:
-                      BorderSide(color: balanceColor.withValues(alpha: 0.2)),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(balanceLabel, style: AppTextStyles.bodySmall(context)),
-                  AppDimensions.h5(context),
-                  Text(
-                    formatMinorUnits(
-                      _balance,
-                      currencyCode: preferredCurrencyCode,
-                    ),
-                    style: AppTextStyles.currency(context)
-                        .copyWith(color: balanceColor),
-                  ),
-                ],
+      body: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            decoration: BoxDecoration(
+              color: balanceColor.withValues(alpha: 0.1),
+              border: Border(
+                bottom:
+                    BorderSide(color: balanceColor.withValues(alpha: 0.2)),
               ),
             ),
-            LoadingIndicator(isLoading: _syncing),
-            Expanded(
-              child: _transactions.isEmpty && _syncing
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 16),
-                          Text('Loading conversation...',
-                              style: AppTextStyles.bodyMedium(context)),
-                        ],
-                      ),
-                    )
-                  : _transactions.isEmpty
-                      ? RefreshIndicator(
-                          onRefresh: _syncFromServer,
-                          child: ListView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            children: [
-                              SizedBox(
-                                  height: AppDimensions.height(context) * 0.2),
-                              Center(
-                                child: Text('No transactions yet',
-                                    style: AppTextStyles.bodyMedium(context)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(balanceLabel, style: AppTextStyles.bodySmall(context)),
+                AppDimensions.h5(context),
+                Text(
+                  formatMinorUnits(
+                    _balance,
+                    currencyCode: preferredCurrencyCode,
+                  ),
+                  style: AppTextStyles.currency(context)
+                      .copyWith(color: balanceColor),
+                ),
+              ],
+            ),
+          ),
+          LoadingIndicator(isLoading: _syncing),
+          Expanded(
+            child: ((_initialLoading || _syncing) && _transactions.isEmpty)
+                ? _buildSkeletonLoading(context)
+                : _transactions.isEmpty
+                    ? RefreshIndicator(
+                        onRefresh: _syncFromServer,
+                        child: ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            SizedBox(
+                                height: AppDimensions.height(context) * 0.2),
+                            Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.chat_bubble_outline_rounded,
+                                    size: 48,
+                                    color: AppColors.textSecondary
+                                        .withValues(alpha: 0.4),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No transactions yet',
+                                    style: AppTextStyles.titleMedium(context),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Add an expense or payment to get started',
+                                    style: AppTextStyles.bodySmall(context),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        )
-                      : Stack(
+                            ),
+                          ],
+                        ),
+                      )
+                    : Stack(
                           children: [
                             RefreshIndicator(
                               onRefresh: _syncFromServer,
@@ -941,8 +1193,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                       : updatedBy != null
                                           ? AppColors.textSecondary
                                           : AppColors.success;
+                                  final syncStatus = item['status'] as String?;
 
                                   return Padding(
+                                      key: ValueKey(_itemIdentifier(item)),
                                       padding:
                                           const EdgeInsets.only(bottom: 10),
                                       child: Align(
@@ -951,6 +1205,94 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                             : Alignment.centerLeft,
                                         child: GestureDetector(
                                           onTap: () {
+                                            if (syncStatus == 'failed') {
+                                              showModalBottomSheet(
+                                                context: context,
+                                                backgroundColor:
+                                                    AppColors.surface,
+                                                shape:
+                                                    const RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.vertical(
+                                                          top: Radius.circular(
+                                                              20)),
+                                                ),
+                                                builder: (ctx) => SafeArea(
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                            20),
+                                                    child: Column(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        const Text(
+                                                          'Transaction Not Synced',
+                                                          style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              fontSize: 16),
+                                                        ),
+                                                        const SizedBox(
+                                                            height: 8),
+                                                        const Text(
+                                                          'This item could not sync with the server. Would you like to retry or discard it?',
+                                                          textAlign: TextAlign
+                                                              .center,
+                                                        ),
+                                                        const SizedBox(
+                                                            height: 20),
+                                                        Row(
+                                                          children: [
+                                                            Expanded(
+                                                              child:
+                                                                  OutlinedButton(
+                                                                onPressed: () {
+                                                                  Navigator.pop(
+                                                                      ctx);
+                                                                  setState(() {
+                                                                    _transactions
+                                                                        .removeWhere((e) =>
+                                                                            _itemIdentifier(e) ==
+                                                                            _itemIdentifier(item));
+                                                                  });
+                                                                },
+                                                                child:
+                                                                    const Text(
+                                                                  'Discard',
+                                                                  style: TextStyle(
+                                                                      color: AppColors
+                                                                          .error),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                                width: 12),
+                                                            Expanded(
+                                                              child:
+                                                                  ElevatedButton(
+                                                                onPressed: () {
+                                                                  Navigator.pop(
+                                                                      ctx);
+                                                                  _retryFailedItem(
+                                                                      item);
+                                                                },
+                                                                child:
+                                                                    const Text(
+                                                                        'Retry Sync'),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                              return;
+                                            }
+
                                             final items = <DetailItem>[];
                                             final participantPhonesRaw =
                                                 item['participantPhones'];
@@ -1201,7 +1543,83 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                                         0.75),
                                                           ),
                                                         ),
-                                                        if (canManageEntry)
+                                                        if (syncStatus ==
+                                                            'syncing') ...[
+                                                          const SizedBox(
+                                                              width: 6),
+                                                          Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              SizedBox(
+                                                                width: 9,
+                                                                height: 9,
+                                                                child:
+                                                                    CircularProgressIndicator(
+                                                                  strokeWidth:
+                                                                      1.5,
+                                                                  valueColor:
+                                                                      AlwaysStoppedAnimation<
+                                                                              Color>(
+                                                                          accentColor),
+                                                                ),
+                                                              ),
+                                                              const SizedBox(
+                                                                  width: 3),
+                                                              Text(
+                                                                'Syncing',
+                                                                style:
+                                                                    TextStyle(
+                                                                  fontSize: 9,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                  color: accentColor
+                                                                      .withValues(
+                                                                          alpha:
+                                                                              0.85),
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ] else if (syncStatus ==
+                                                            'failed') ...[
+                                                          const SizedBox(
+                                                              width: 6),
+                                                          const Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              Icon(
+                                                                  Icons
+                                                                      .warning_amber_rounded,
+                                                                  size: 11,
+                                                                  color: AppColors
+                                                                      .error),
+                                                              SizedBox(
+                                                                  width: 2),
+                                                              Text(
+                                                                'Failed',
+                                                                style:
+                                                                    TextStyle(
+                                                                  fontSize: 9,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                  color: AppColors
+                                                                      .error,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ],
+                                                        if (canManageEntry &&
+                                                            syncStatus !=
+                                                                'syncing' &&
+                                                            syncStatus !=
+                                                                'failed')
                                                           PopupMenuButton<
                                                               String>(
                                                             tooltip: 'Options',
@@ -1517,9 +1935,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: (_syncing || _submitting)
-                            ? null
-                            : _addExpenseFromChat,
+                        onPressed: _addExpenseFromChat,
                         icon: const Icon(Icons.receipt_long),
                         label: const Text('Add Expense'),
                       ),
@@ -1527,9 +1943,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: (_syncing || _submitting)
-                            ? null
-                            : _addTransactionFromChat,
+                        onPressed: _addTransactionFromChat,
                         icon: const Icon(Icons.payments),
                         label: const FittedBox(child: Text('Add Transaction')),
                       ),
@@ -1540,7 +1954,103 @@ class _ConversationScreenState extends State<ConversationScreen> {
             ),
           ],
         ),
-      ),
+      );
+    }
+
+  Widget _buildSkeletonLoading(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final placeholderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.05);
+    final highlightColor = isDark
+        ? Colors.white.withValues(alpha: 0.14)
+        : Colors.black.withValues(alpha: 0.09);
+
+    Widget buildBubbleSkeleton({
+      required bool isSent,
+      required double widthRatio,
+      required double height,
+    }) {
+      return Align(
+        alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          width: MediaQuery.of(context).size.width * widthRatio,
+          height: height,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isSent
+                ? AppColors.primary.withValues(alpha: isDark ? 0.25 : 0.12)
+                : Theme.of(context).cardColor,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: Radius.circular(isSent ? 16 : 4),
+              bottomRight: Radius.circular(isSent ? 4 : 16),
+            ),
+            boxShadow: AppShadows.card,
+            border: Border.all(
+              color: isSent
+                  ? AppColors.primary.withValues(alpha: 0.2)
+                  : Theme.of(context).dividerColor.withValues(alpha: 0.1),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment:
+                isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment:
+                    isSent ? MainAxisAlignment.end : MainAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 70,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: highlightColor,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisAlignment:
+                    isSent ? MainAxisAlignment.end : MainAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 110,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: placeholderColor,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                width: 50,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: highlightColor,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      children: [
+        buildBubbleSkeleton(isSent: false, widthRatio: 0.65, height: 85),
+        buildBubbleSkeleton(isSent: true, widthRatio: 0.55, height: 80),
+        buildBubbleSkeleton(isSent: false, widthRatio: 0.70, height: 90),
+        buildBubbleSkeleton(isSent: true, widthRatio: 0.60, height: 85),
+      ],
     );
   }
 }

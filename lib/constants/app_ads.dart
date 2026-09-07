@@ -11,9 +11,9 @@ class AppAds {
   static const String _testNativeIos = 'ca-app-pub-3940256099942544/3986624511';
 
   // --- Production IDs ---
-  static const String _prodBanner = 'ca-app-pub-7247180021367190/3886565886';
-  static const String _prodInterstitial = 'ca-app-pub-7247180021367190/3343640401';
-  static const String _prodNative = 'ca-app-pub-7247180021367190/2030558732';
+  static const String _prodBanner = 'ca-app-pub-7247180021367190/4206142735';
+  static const String _prodInterstitial = 'ca-app-pub-7247180021367190/4174353145';
+  static const String _prodNative = 'ca-app-pub-7247180021367190/6417373106';
 
   static String get bannerId => _isTest ? _testBanner : _prodBanner;
   static String get interstitialId => _isTest ? _testInterstitial : _prodInterstitial;

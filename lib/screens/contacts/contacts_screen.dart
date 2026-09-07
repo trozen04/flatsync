@@ -237,16 +237,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       final contactService = context.read<ContactService>();
       final isar = context.read<IsarService>();
-      final updated = <ContactModel>[];
 
-      for (final contact in unresolved) {
-        final resolved =
-            await contactService.addContactByPhone(contact.phoneNumber!);
-        if (resolved != null && (resolved.contactId?.isNotEmpty ?? false)) {
+      // Batch match in a single network call instead of looping individual requests
+      final payload = unresolved
+          .map((c) => {'name': c.name ?? c.phoneNumber!, 'phone': c.phoneNumber!})
+          .toList();
+      final resolvedList = await contactService.matchContactsList(payload);
+
+      if (resolvedList.isEmpty) return;
+
+      final updated = <ContactModel>[];
+      for (final resolved in resolvedList) {
+        final contact = unresolved.firstWhere(
+          (c) => PhoneUtils.isSameNumber(c.phoneNumber, resolved.phoneNumber),
+          orElse: () => ContactModel(),
+        );
+        if (contact.phoneNumber != null && (resolved.contactId?.isNotEmpty ?? false)) {
           contact.contactId = resolved.contactId;
           contact.isRegistered = resolved.isRegistered;
-          contact.name =
-              contact.name?.isNotEmpty == true ? contact.name : resolved.name;
+          if (_looksLikePhoneName(contact.name) && (resolved.name?.isNotEmpty ?? false)) {
+            contact.name = resolved.name;
+          }
           contact.updatedAt = DateTime.now();
           updated.add(contact);
         }
@@ -254,8 +265,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       if (updated.isNotEmpty) {
         await contactService.upsertContactsByCanonical(isar, updated);
-        await _loadLocalContacts(reset: true);
+        if (mounted) {
+          final isarService = context.read<IsarService>();
+          final refreshed = await isarService.getContactsPage(
+            offset: 0,
+            limit: _contactsOffset > 0 ? _contactsOffset : _pageSize,
+            query: _query,
+          );
+          if (mounted) {
+            setState(() {
+              _contacts = refreshed;
+            });
+          }
+        }
       }
+    } catch (e) {
+      developer.log('Reconcile contact IDs error: $e');
     } finally {
       _isReconciling = false;
     }
@@ -284,8 +309,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _balances = normalized;
         _balancesByCanonicalPhone = normalizedByCanonicalPhone;
       });
-      // Reload contacts in case balance sync added new ones
-      unawaited(_loadLocalContacts(reset: true));
     } catch (e) {
       developer.log('Load contact balances error: $e');
     }
@@ -438,7 +461,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     if (result == null) return;
 
-    setState(() => _syncing = true);
+    if (mounted) setState(() => _syncing = true);
 
     try {
       final registered =
@@ -457,10 +480,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       await contactService.upsertContactsByCanonical(isar, [contact]);
 
-      // Notify all screens about contact updates
+      if (mounted) {
+        await _loadLocalContacts(reset: true);
+      }
       contactService.notifyUpdate();
 
-      await _refreshData(forceRefresh: true);
+      if (mounted) {
+        await _loadBalances(forceRefresh: false);
+      }
 
       if (mounted) {
         CustomSnackBar.showOnOverlay(

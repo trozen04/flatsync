@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
 class FlutterFontStyle {
-  static const String family = 'Poppins';
+  static const String family = 'Montserrat';
 
   static TextStyle textStyle({
-    double fontSize = 14,
+    double fontSize = 13,
     FontWeight fontWeight = FontWeight.w400,
     Color color = AppColors.textPrimary,
     double letterSpacing = 0,
@@ -14,8 +15,7 @@ class FlutterFontStyle {
     List<FontFeature>? fontFeatures,
     FontStyle? fontStyle,
   }) {
-    return TextStyle(
-      fontFamily: family,
+    return GoogleFonts.montserrat(
       fontSize: fontSize,
       fontWeight: fontWeight,
       color: color,

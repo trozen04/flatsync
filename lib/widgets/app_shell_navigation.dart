@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_shadows.dart';
 
 class AppShellNavigation extends StatelessWidget {
   final int selectedIndex;
@@ -38,19 +39,7 @@ class AppShellNavigation extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.textPrimary,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.45),
-                blurRadius: 28,
-                offset: const Offset(0, 10),
-                spreadRadius: -4,
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            boxShadow: AppShadows.navigation,
           ),
           child: Row(
             children: [
@@ -82,22 +71,18 @@ class AppShellNavigation extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: selectedIndex == 3
                           ? const LinearGradient(
-                              colors: [Color(0xFF6EE7B7), Color(0xFF059669)],
+                              colors: [AppColors.success, AppColors.successDark],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             )
-                          : const LinearGradient(
-                              colors: [Color(0xFF3B82F6), Color(0xFF1E3FBF)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                          : AppColors.primaryGradient,
                       borderRadius: BorderRadius.circular(fabRadius),
                       boxShadow: [
                         BoxShadow(
                           color: (selectedIndex == 3
-                                  ? const Color(0xFF059669)
+                                  ? AppColors.success
                                   : AppColors.primary)
-                              .withValues(alpha: 0.5),
+                              .withValues(alpha: 0.4),
                           blurRadius: 16,
                           offset: const Offset(0, 6),
                         ),
@@ -196,7 +181,7 @@ class _NavButton extends StatelessWidget {
               width: selected ? 16 : 0,
               height: 3,
               decoration: BoxDecoration(
-                color: const Color(0xFF6EE7B7),
+                color: AppColors.primary,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

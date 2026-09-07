@@ -21,6 +21,7 @@ class ExpenseService {
   static const String _recentAmountsStorageKey = 'recent_amounts_paise_v1';
   static const String _transactionsStorageKey =
       'offline_cached_transactions_v1';
+  static const String _timelineStoragePrefix = 'offline_cached_timeline_v1_';
   static const int _maxRecentAmounts = 8;
   static const int _maxConversationCacheEntries = 24;
   static const int _maxTimelineCacheEntries = 24;
@@ -233,6 +234,68 @@ class ExpenseService {
     }
     return map.values.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  Future<void> _persistTimeline(
+      String contactKey, List<Map<String, dynamic>> items,
+      {String? secondaryKey}) async {
+    try {
+      if (contactKey.trim().isEmpty) return;
+      final prefs = await _ensurePrefs();
+      final key = '$_timelineStoragePrefix${contactKey.trim()}';
+      final safeRows = items.take(100).toList();
+      final encoded = jsonEncode(safeRows);
+      await prefs.setString(key, encoded);
+      if (secondaryKey != null &&
+          secondaryKey.trim().isNotEmpty &&
+          secondaryKey.trim() != contactKey.trim()) {
+        await prefs.setString(
+            '$_timelineStoragePrefix${secondaryKey.trim()}', encoded);
+      }
+    } catch (e) {
+      developer.log('Persist timeline cache error: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _readPersistedTimeline(
+      String contactKey) async {
+    try {
+      if (contactKey.trim().isEmpty) return [];
+      final prefs = await _ensurePrefs();
+      final key = '$_timelineStoragePrefix${contactKey.trim()}';
+      final raw = prefs.getString(key);
+      if (raw == null || raw.isEmpty) return [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      return decoded
+          .whereType<Map>()
+          .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
+          .toList()
+          .cast<Map<String, dynamic>>();
+    } catch (e) {
+      developer.log('Read timeline cache error: $e');
+      return [];
+    }
+  }
+
+  Future<void> saveOptimisticTimelineItem(
+      String contactKey, Map<String, dynamic> item,
+      {String? secondaryKey}) async {
+    try {
+      if (contactKey.trim().isEmpty) return;
+      final existing = await _readPersistedTimeline(contactKey);
+      final id = (item['id'] ?? item['clientUuid'] ?? '').toString();
+      final filtered = existing.where((e) {
+        final existingId = (e['id'] ?? e['clientUuid'] ?? '').toString();
+        return existingId != id;
+      }).toList();
+      final updated = [item, ...filtered];
+      await _persistTimeline(contactKey, updated, secondaryKey: secondaryKey);
+      _invalidateCaches();
+      _emitUpdate();
+    } catch (e) {
+      developer.log('Save optimistic timeline item error: $e');
+    }
   }
 
   Future<List<int>> getRecentAmounts() async {
@@ -495,20 +558,23 @@ class ExpenseService {
     }
 
     if (forceRefresh) {
-      if (_forceRefreshBalancesInFlight != null)
+      if (_forceRefreshBalancesInFlight != null) {
         return _forceRefreshBalancesInFlight!;
+      }
       final future = _fetchBalances(forceRefresh: true);
       _forceRefreshBalancesInFlight = future;
       try {
         return await future;
       } finally {
-        if (identical(_forceRefreshBalancesInFlight, future))
+        if (identical(_forceRefreshBalancesInFlight, future)) {
           _forceRefreshBalancesInFlight = null;
+        }
       }
     }
 
-    if (_forceRefreshBalancesInFlight != null)
+    if (_forceRefreshBalancesInFlight != null) {
       return _forceRefreshBalancesInFlight!;
+    }
     if (_balancesInFlight != null) return _balancesInFlight!;
 
     final future = _fetchBalances(forceRefresh: false);
@@ -650,6 +716,7 @@ class ExpenseService {
     String? search,
   }) async {
     final safeLimit = limit < 1 ? 20 : limit;
+    final contactKey = (withUserId ?? withUserPhone ?? 'all').trim();
     final cacheKey =
         'with:${(withUserId ?? 'all').trim()}:p:${(withUserPhone ?? '').trim()}:c:${(cursor ?? '').trim()}:l$safeLimit:s:${(search ?? '').trim()}';
     _evictTimedCacheEntries(
@@ -661,16 +728,40 @@ class ExpenseService {
       return _timelineCache[cacheKey]!;
     }
 
+    if (!forceRefresh && (cursor == null || cursor.isEmpty)) {
+      var localItems = await _readPersistedTimeline(contactKey);
+      if (localItems.isEmpty &&
+          withUserPhone != null &&
+          withUserPhone.trim().isNotEmpty) {
+        localItems = await _readPersistedTimeline(
+            _canonicalPhone(withUserPhone.trim()));
+      }
+      if (localItems.isNotEmpty) {
+        final localPage = TimelinePage(
+          items: localItems,
+          nextCursor: null,
+          hasMore: localItems.length >= safeLimit,
+        );
+        _timelineCache[cacheKey] = localPage;
+        _timelineCacheAt[cacheKey] = DateTime.now();
+        return localPage;
+      }
+    }
+
     try {
       final qp = <String, dynamic>{'limit': safeLimit};
-      if (withUserId != null && withUserId.trim().isNotEmpty)
+      if (withUserId != null && withUserId.trim().isNotEmpty) {
         qp['withUserId'] = withUserId.trim();
-      if (withUserPhone != null && withUserPhone.trim().isNotEmpty)
+      }
+      if (withUserPhone != null && withUserPhone.trim().isNotEmpty) {
         qp['withUserPhone'] = withUserPhone.trim();
-      if (cursor != null && cursor.trim().isNotEmpty)
+      }
+      if (cursor != null && cursor.trim().isNotEmpty) {
         qp['cursor'] = cursor.trim();
-      if (search != null && search.trim().isNotEmpty)
+      }
+      if (search != null && search.trim().isNotEmpty) {
         qp['search'] = search.trim();
+      }
 
       developer.log(
         '[ExpenseService] GET ${ApiConfig.timeline} query=$qp',
@@ -776,10 +867,31 @@ class ExpenseService {
         hasMore: hasMore,
       );
       _storeTimelineCache(cacheKey, page);
+      if (cursor == null || cursor.isEmpty) {
+        final phoneKey =
+            (withUserPhone != null && withUserPhone.trim().isNotEmpty)
+                ? _canonicalPhone(withUserPhone.trim())
+                : null;
+        unawaited(_persistTimeline(contactKey, parsed, secondaryKey: phoneKey));
+      }
       return page;
     } catch (e) {
       if (_timelineCache.containsKey(cacheKey)) {
         return _timelineCache[cacheKey]!;
+      }
+      var localFallback = await _readPersistedTimeline(contactKey);
+      if (localFallback.isEmpty &&
+          withUserPhone != null &&
+          withUserPhone.trim().isNotEmpty) {
+        localFallback = await _readPersistedTimeline(
+            _canonicalPhone(withUserPhone.trim()));
+      }
+      if (localFallback.isNotEmpty) {
+        return TimelinePage(
+          items: localFallback,
+          nextCursor: null,
+          hasMore: localFallback.length >= safeLimit,
+        );
       }
       rethrow;
     }
@@ -797,6 +909,15 @@ class ExpenseService {
         _conversationCache.containsKey(cacheKey) &&
         _isFresh(_conversationCacheAt[cacheKey])) {
       return _conversationCache[cacheKey]!;
+    }
+
+    if (!forceRefresh) {
+      final localItems = await _readPersistedTimeline(target);
+      if (localItems.isNotEmpty) {
+        _conversationCache[cacheKey] = localItems;
+        _conversationCacheAt[cacheKey] = DateTime.now();
+        return localItems;
+      }
     }
 
     final expenses = await getExpenses(forceRefresh: forceRefresh);
@@ -842,6 +963,7 @@ class ExpenseService {
         .compareTo(DateTime.parse(a['createdAt'] as String)));
 
     _storeConversationCache(cacheKey, timeline);
+    unawaited(_persistTimeline(target, timeline));
     return timeline;
   }
 }

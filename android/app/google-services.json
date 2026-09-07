@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "272711653813",
-    "project_id": "flatsync-70e41",
-    "storage_bucket": "flatsync-70e41.firebasestorage.app"
+    "project_number": "236339906754",
+    "project_id": "fairchop-trozen",
+    "storage_bucket": "fairchop-trozen.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:272711653813:android:227bc2a8ca2122c83fa1fc",
+        "mobilesdk_app_id": "1:236339906754:android:5c2f741618086ee5a3135b",
         "android_client_info": {
-          "package_name": "com.trozen.flatsync"
+          "package_name": "com.fairchop"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBNysPPARuZpAbjYBQmmdbvnlKWAoEtTn4"
+          "current_key": "AIzaSyBQ5x_1wMIRRe38gYAkrqN7c8AuHmXFFlk"
         }
       ],
       "services": {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_shadows.dart';
 import '../constants/app_text_styles.dart';
 
 class CustomButton extends StatelessWidget {
@@ -60,18 +61,7 @@ class CustomButton extends StatelessWidget {
                   : null,
               boxShadow: isOutlined || disabled
                   ? []
-                  : [
-                      BoxShadow(
-                        color: (backgroundColor ?? AppColors.primary).withValues(alpha: 0.30),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.10),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+                  : AppShadows.colored(backgroundColor ?? AppColors.primary, intensity: 0.25),
             ),
             child: isLoading
                 ? const CircularProgressIndicator(color: Colors.white)
