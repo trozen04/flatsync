@@ -8,10 +8,44 @@ import 'package:path_provider/path_provider.dart';
 class IsarService {
   late Isar isar;
 
-  int _compareContactsByName(ContactModel a, ContactModel b) {
+  int _compareContactsByLatestDate(ContactModel a, ContactModel b) {
+    final aDate =
+        a.updatedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bDate =
+        b.updatedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final dateComp = bDate.compareTo(aDate);
+    if (dateComp != 0) return dateComp;
     final aName = (a.name ?? '').trim().toLowerCase();
     final bName = (b.name ?? '').trim().toLowerCase();
     return aName.compareTo(bName);
+  }
+
+  Future<void> touchContactActivity(String? phoneNumber, {String? contactId}) async {
+    final rawPhone = PhoneUtils.normalizeRaw(phoneNumber ?? '');
+    final key = PhoneUtils.canonical(rawPhone);
+    if (key.isEmpty && (contactId == null || contactId.isEmpty)) return;
+
+    final all = await isar.contactModels.filter().idGreaterThan(-1).findAll();
+    ContactModel? target;
+    for (final c in all) {
+      if (key.isNotEmpty && PhoneUtils.canonical(c.phoneNumber ?? '') == key) {
+        target = c;
+        break;
+      }
+      if (contactId != null &&
+          contactId.isNotEmpty &&
+          c.contactId == contactId) {
+        target = c;
+        break;
+      }
+    }
+
+    if (target != null) {
+      target.updatedAt = DateTime.now();
+      await isar.writeTxn(() async {
+        await isar.contactModels.put(target!);
+      });
+    }
   }
 
   Future<void> openDB() async {
@@ -131,7 +165,7 @@ class IsarService {
             return name.contains(searchTerm) || phone.contains(searchTerm);
           }).toList();
 
-    filtered.sort(_compareContactsByName);
+    filtered.sort(_compareContactsByLatestDate);
 
     if (safeOffset >= filtered.length) return <ContactModel>[];
     final end = (safeOffset + safeLimit) > filtered.length
@@ -140,14 +174,29 @@ class IsarService {
     return filtered.sublist(safeOffset, end);
   }
 
-  Future<void> close() async {
-    await isar.close();
+  Future<void> deleteContact(int id, {String? contactId, String? phoneNumber}) async {
+    await isar.writeTxn(() async {
+      await isar.contactModels.delete(id);
+      if (contactId != null && contactId.isNotEmpty) {
+        final matching = await isar.contactModels.filter().contactIdEqualTo(contactId).findAll();
+        for (final m in matching) {
+          await isar.contactModels.delete(m.id);
+        }
+      }
+      if (phoneNumber != null && phoneNumber.isNotEmpty) {
+        final key = PhoneUtils.canonical(phoneNumber);
+        final all = await isar.contactModels.filter().idGreaterThan(-1).findAll();
+        for (final m in all) {
+          if (PhoneUtils.canonical(m.phoneNumber ?? '') == key) {
+            await isar.contactModels.delete(m.id);
+          }
+        }
+      }
+    });
   }
 
-  Future<void> deleteContact(int isarId) async {
-    await isar.writeTxn(() async {
-      await isar.contactModels.delete(isarId);
-    });
+  Future<void> close() async {
+    await isar.close();
   }
 
   Future<void> clearUserData() async {

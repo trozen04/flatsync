@@ -243,12 +243,22 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     try {
       final desc = _descController.text.trim();
+      final contactService = context.read<ContactService>();
+      final isar = context.read<IsarService>();
+      final participantsList = List<String>.from(_selectedParticipants);
+
       await expenseService.createExpense(
         description: desc.isEmpty ? 'Expense' : desc,
         totalAmount: amountPaise,
-        participants: List<String>.from(_selectedParticipants),
+        participants: participantsList,
         category: _selectedCategory,
       );
+
+      for (final p in participantsList) {
+        unawaited(isar
+            .touchContactActivity(p)
+            .then((_) => contactService.notifyUpdate()));
+      }
 
       CustomSnackBar.showOnOverlay(
         overlay,

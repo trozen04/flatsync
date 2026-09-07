@@ -24,6 +24,11 @@ import '../../utils/custom_snackbar.dart';
 import '../../utils/form_validation.dart';
 import '../../utils/network_error_handler.dart';
 import '../../constants/app_shadows.dart';
+import '../../widgets/app_inquiry_dialog.dart';
+import '../../widgets/app_dialog.dart';
+import '../../services/expense_service.dart';
+import '../auth/login_screen.dart';
+import '../contacts/contacts_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool showAppBar;
@@ -45,6 +50,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _notificationsEnabled = false;
   String? _biometricLabel;
   UserModel? _user;
+
+  Future<void> _logout() async {
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Logout',
+      message:
+          'Are you sure you want to logout?\nAll local data will be cleared.',
+      icon: Icons.logout_rounded,
+      variant: DialogVariant.danger,
+      confirmLabel: 'Logout',
+    );
+
+    if (confirmed == true && mounted) {
+      ContactsScreen.resetPersistedState();
+
+      // Clear Isar database
+      final isar = context.read<IsarService>();
+      final expenseService = context.read<ExpenseService>();
+      final notificationService = context.read<NotificationService>();
+      final preferences = context.read<AppPreferencesService>();
+      final auth = context.read<AuthService>();
+      final navigator = Navigator.of(context);
+
+      // Clear in-memory caches first
+      expenseService.clearAllCaches();
+
+      await isar.clearUserData();
+
+      // Clear persisted offline caches
+      await expenseService.clearPersistedCaches();
+
+      // Logout from auth service
+      await notificationService.unregisterDevice();
+      await preferences.resetForLogout();
+      await auth.logout();
+
+      if (mounted) {
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    }
+  }
 
   Future<void> _toggleNotifications(bool enabled) async {
     if (_notificationBusy) return;
@@ -671,6 +720,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     AppDimensions.h20(context),
                     const AppSectionHeader(
+                      title: 'Custom development & buy app',
+                      subtitle:
+                          'Want to buy this app or build custom Mobile, Web & Desktop software?',
+                    ),
+                    AppDimensions.h10(context),
+                    _groupCard(
+                      context,
+                      [
+                        _profileActionRow(
+                          context,
+                          icon: Icons.rocket_launch_rounded,
+                          title: 'Buy App & Custom Development',
+                          subtitle:
+                              'Mobile apps, Web apps, Websites & Desktop software by The Trozen',
+                          onTap: () =>
+                              AppInquiryDialog.showBottomSheet(context),
+                        ),
+                        _profileActionRow(
+                          context,
+                          icon: Icons.chat_rounded,
+                          title: 'WhatsApp / Call Us',
+                          subtitle: '+91 88876 92942',
+                          onTap: () => AppInquiryDialog.launchWhatsApp(),
+                        ),
+                        _profileActionRow(
+                          context,
+                          icon: Icons.email_rounded,
+                          title: 'Email Inquiry',
+                          subtitle: 'hello@thetrozen.com',
+                          onTap: () => AppInquiryDialog.launchEmail(),
+                        ),
+                      ],
+                    ),
+                    AppDimensions.h20(context),
+                    const AppSectionHeader(
                       title: 'Support the developer',
                       subtitle: 'If you enjoy the app, consider buying me a coffee ☕',
                     ),
@@ -690,6 +774,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
+                    AppDimensions.h20(context),
+                    AppCard(
+                      type: AppCardType.outlined,
+                      backgroundColor: AppColors.error.withValues(alpha: 0.04),
+                      onTap: _logout,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.logout_rounded,
+                              color: AppColors.error,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Log Out',
+                                  style: AppTextStyles.titleMedium(context)
+                                      .copyWith(
+                                    color: AppColors.error,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Sign out of your account on this device',
+                                  style: AppTextStyles.bodySmall(context)
+                                      .copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 14,
+                            color: AppColors.error,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 40),
                   ],
                 ),
         ),

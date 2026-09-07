@@ -236,29 +236,36 @@ class _ContactSelectionScreenState extends State<ContactSelectionScreen> {
         actions: [
           if (selectedCount > 0)
             Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton.icon(
                 onPressed: _syncing ? null : _syncSelected,
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.15),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 ),
-                child: _syncing
+                icon: _syncing
                     ? const SizedBox(
-                        width: 18,
-                        height: 18,
+                        width: 16,
+                        height: 16,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white),
                       )
-                    : Text(
-                        'Add $selectedCount',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                    : const Icon(Icons.person_add_alt_1_rounded,
+                        size: 16, color: Colors.white),
+                label: Text(
+                  'Add $selectedCount',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
         ],

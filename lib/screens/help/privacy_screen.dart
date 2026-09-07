@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../constants/app_colors.dart';
 import '../../constants/app_dimensions.dart';
 import '../../widgets/help_content.dart';
 import '../../widgets/gradient_app_bar.dart';
@@ -43,7 +44,7 @@ We collect only what is needed for the app to work and to keep your account and 
 - You can request account or data help through support.
 
 6. Contact:
-- Support email: hello@thetrozen.com
+- Email: hello@thetrozen.com
 ''';
 
   @override
@@ -52,13 +53,26 @@ We collect only what is needed for the app to work and to keep your account and 
       appBar: GradientAppBar(
         title: 'Privacy Policy',
         actions: [
-          IconButton(
-            icon: const Icon(Icons.copy_rounded, color: Colors.white),
-            tooltip: 'Copy Privacy Policy',
-            onPressed: () {
-              Clipboard.setData(const ClipboardData(text: privacyPolicyText));
-              CustomSnackBar.show(context, message: 'Privacy policy copied to clipboard');
-            },
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              style: IconButton.styleFrom(
+                backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                padding: const EdgeInsets.all(8),
+                minimumSize: const Size(38, 38),
+              ),
+              icon: const Icon(
+                Icons.copy_rounded,
+                color: AppColors.primary,
+                size: 20,
+              ),
+              tooltip: 'Copy Privacy Policy',
+              onPressed: () {
+                Clipboard.setData(const ClipboardData(text: privacyPolicyText));
+                CustomSnackBar.show(context,
+                    message: 'Privacy policy copied to clipboard');
+              },
+            ),
           ),
         ],
       ),

@@ -859,7 +859,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                                             BorderRadius
                                                                 .circular(4),
                                                       ),
-                                                      child: Text(
+                                                      child: const Text(
                                                         'Deleted',
                                                         style: TextStyle(
                                                           fontSize: 10,

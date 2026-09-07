@@ -4,22 +4,20 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../constants/api_config.dart';
 import '../../constants/app_dimensions.dart';
 import '../../constants/app_ads.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_shadows.dart';
 import '../../constants/app_text_styles.dart';
 import '../../services/app_preferences_service.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/app_page_sections.dart';
-import '../../widgets/custom_button.dart';
 import '../../widgets/loading_indicator.dart';
 import '../../widgets/native_ad_widget.dart';
 import '../../models/contact_model.dart';
 import '../../services/isar_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/api_service.dart';
 import '../../services/contact_service.dart';
 import '../../services/expense_service.dart';
 import '../../utils/money_utils.dart';
@@ -39,10 +37,10 @@ class ContactsScreen extends StatefulWidget {
   }
 
   @override
-  State<ContactsScreen> createState() => _ContactsScreenState();
+  State<ContactsScreen> createState() => ContactsScreenState();
 }
 
-class _ContactsScreenState extends State<ContactsScreen> {
+class ContactsScreenState extends State<ContactsScreen> {
   List<ContactModel> _contacts = [];
   Map<String, int> _balances = {};
   Map<String, int> _balancesByCanonicalPhone = {};
@@ -368,7 +366,44 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return 'Settled';
   }
 
-  Future<void> _openContactSelection() async {
+  int get owedToYouTotalAmount => _owedToYouTotal();
+  int get youOweTotalAmount => _youOweTotal();
+  bool get hasActiveBalances => _owedToYouTotal() > 0 || _youOweTotal() > 0;
+
+  void showBalanceSummary() {
+    final preferredCurrencyCode =
+        context.read<AppPreferencesService>().preferredCurrencyCode;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _BalanceSummaryBottomSheet(
+        owedToYouTotal: _owedToYouTotal(),
+        youOweTotal: _youOweTotal(),
+        preferredCurrencyCode: preferredCurrencyCode,
+      ),
+    );
+  }
+
+  void showAddContactSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _AddContactBottomSheet(
+        onSelectContacts: () {
+          Navigator.of(context).pop();
+          openContactSelection();
+        },
+        onAddByPhone: () {
+          Navigator.of(context).pop();
+          addManualContact();
+        },
+      ),
+    );
+  }
+
+  Future<void> openContactSelection() async {
     final result = await Navigator.push<int>(
       context,
       MaterialPageRoute(builder: (_) => const ContactSelectionScreen()),
@@ -379,36 +414,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  Widget _buildContactActions() {
-    return Row(
-      children: [
-        Expanded(
-          child: CustomButton(
-            text: 'Select contacts',
-            icon: Icons.contacts_rounded,
-            height: 44,
-            onPressed: _openContactSelection,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: CustomButton(
-            text: 'Add by phone',
-            icon: Icons.person_add_alt_1_rounded,
-            height: 44,
-            isOutlined: true,
-            textColor: AppColors.primary,
-            onPressed: _addManualContact,
-          ),
-        ),
-      ],
-    );
-  }
-
   Future<bool?> _confirmDeleteContact(ContactModel contact) async {
     final overlay = Overlay.of(context);
     final authService = context.read<AuthService>();
-    final apiService = context.read<ApiService>();
     final isar = context.read<IsarService>();
     final contactService = context.read<ContactService>();
 
@@ -430,13 +438,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
 
     try {
-      // Registered user — block on backend so they don't reappear on any device
-      if (contact.contactId != null && contact.contactId!.isNotEmpty) {
-        await apiService.delete(ApiConfig.blockContact(contact.contactId!));
-      }
-      // Always remove locally
-      await isar.deleteContact(contact.id);
-      contactService.notifyUpdate();
+      await contactService.deleteContact(isar, contact);
       if (mounted) {
         CustomSnackBar.showOnOverlay(overlay,
             message: '${contact.name ?? 'Contact'} removed');
@@ -452,7 +454,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  Future<void> _addManualContact() async {
+  Future<void> addManualContact() async {
     final overlay = Overlay.of(context);
     final contactService = context.read<ContactService>();
     final isar = context.read<IsarService>();
@@ -480,13 +482,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       await contactService.upsertContactsByCanonical(isar, [contact]);
 
-      if (mounted) {
-        await _loadLocalContacts(reset: true);
-      }
       contactService.notifyUpdate();
 
       if (mounted) {
-        await _loadBalances(forceRefresh: false);
+        await _refreshData(forceRefresh: true);
       }
 
       if (mounted) {
@@ -517,8 +516,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final preferredCurrencyCode =
         context.watch<AppPreferencesService>().preferredCurrencyCode;
     final hasSearch = _query.trim().isNotEmpty;
-    final owedToYouTotal = _owedToYouTotal();
-    final youOweTotal = _youOweTotal();
 
     Widget buildEmptyState({
       required String title,
@@ -571,38 +568,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ),
                 onChanged: _onSearchChanged,
               ),
-              AppDimensions.h10(context),
-              Row(
-                children: [
-                  Expanded(
-                    child: _CompactSummaryCard(
-                      label: "You'll get",
-                      amount: owedToYouTotal,
-                      currencyCode: preferredCurrencyCode,
-                      color: AppColors.success,
-                      icon: Icons.call_received_rounded,
-                    ),
-                  ),
-                  AppDimensions.w10(context),
-                  Expanded(
-                    child: _CompactSummaryCard(
-                      label: "You'll pay",
-                      amount: youOweTotal,
-                      currencyCode: preferredCurrencyCode,
-                      color: AppColors.error,
-                      icon: Icons.call_made_rounded,
-                    ),
-                  ),
-                ],
-              ),
-              AppDimensions.h20(context),
-              const AppSectionHeader(
-                title: 'People',
-                subtitle:
-                    'Each card shows the current balance and quick status.',
-              ),
-              AppDimensions.h10(context),
-              _buildContactActions(),
               AppDimensions.h10(context),
               Expanded(
                 child: _contacts.isEmpty && _refreshing
@@ -827,6 +792,364 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               },
                             ),
                           ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BalanceSummaryBottomSheet extends StatelessWidget {
+  final int owedToYouTotal;
+  final int youOweTotal;
+  final String preferredCurrencyCode;
+
+  const _BalanceSummaryBottomSheet({
+    required this.owedToYouTotal,
+    required this.youOweTotal,
+    required this.preferredCurrencyCode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final netBalance = owedToYouTotal - youOweTotal;
+    final netColor = netBalance > 0
+        ? AppColors.success
+        : netBalance < 0
+            ? AppColors.error
+            : AppColors.textSecondary;
+    final netLabel = netBalance > 0
+        ? "Overall you'll receive ${formatMinorUnits(netBalance, currencyCode: preferredCurrencyCode)}"
+        : netBalance < 0
+            ? "Overall you'll pay ${formatMinorUnits(netBalance.abs(), currencyCode: preferredCurrencyCode)}"
+            : "All settled up 🎉";
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: AppShadows.cardElevated,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primaryDark, AppColors.primary],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.account_balance_wallet_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Balance Summary',
+                          style: AppTextStyles.titleMedium(context).copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          'Overall overview across all contacts',
+                          style: AppTextStyles.bodySmall(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+
+              // Net Status Banner
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: netColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: netColor.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      netBalance > 0
+                          ? Icons.trending_up_rounded
+                          : netBalance < 0
+                              ? Icons.trending_down_rounded
+                              : Icons.check_circle_outline_rounded,
+                      color: netColor,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        netLabel,
+                        style: TextStyle(
+                          color: netColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // 2 Summary Cards
+              Row(
+                children: [
+                  Expanded(
+                    child: _CompactSummaryCard(
+                      label: "You'll get",
+                      amount: owedToYouTotal,
+                      currencyCode: preferredCurrencyCode,
+                      color: AppColors.success,
+                      icon: Icons.call_received_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _CompactSummaryCard(
+                      label: "You'll pay",
+                      amount: youOweTotal,
+                      currencyCode: preferredCurrencyCode,
+                      color: AppColors.error,
+                      icon: Icons.call_made_rounded,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddContactBottomSheet extends StatelessWidget {
+  final VoidCallback onSelectContacts;
+  final VoidCallback onAddByPhone;
+
+  const _AddContactBottomSheet({
+    required this.onSelectContacts,
+    required this.onAddByPhone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: AppShadows.cardElevated,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primaryDark, AppColors.primary],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.person_add_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Add New Contact',
+                          style: AppTextStyles.titleMedium(context).copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          'Choose how to add people to FlatSync',
+                          style: AppTextStyles.bodySmall(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Option 1
+              _ActionTile(
+                icon: Icons.contacts_rounded,
+                title: 'Select from Phone Contacts',
+                subtitle: 'Import one or more people from your phonebook',
+                color: AppColors.primary,
+                onTap: onSelectContacts,
+              ),
+              const SizedBox(height: 10),
+
+              // Option 2
+              _ActionTile(
+                icon: Icons.person_add_alt_1_rounded,
+                title: 'Add by Phone Number',
+                subtitle: 'Manually enter a name and phone number',
+                color: AppColors.success,
+                onTap: onAddByPhone,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.04)
+                : Colors.black.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.06),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTextStyles.titleSmall(context).copyWith(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: AppTextStyles.bodySmall(context).copyWith(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: AppColors.textTertiary,
               ),
             ],
           ),

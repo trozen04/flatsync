@@ -33,8 +33,8 @@ android {
         applicationId = "com.fairchop"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
-        versionCode = 21
-        versionName = "1.0.1"
+        versionCode = 1
+        versionName = "1.0.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64", "armeabi-v7a")
         }

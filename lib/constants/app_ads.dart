@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 class AppAds {
-  // Test mode - release ke time false karo aur real IDs uncomment karo
-  static const bool _isTest = false;
+  // Test mode - automatically enabled in debug mode, disabled for production release
+  static const bool _isTest = kDebugMode;
 
   // --- Test IDs (Google official test IDs) ---
   static const String _testBanner = 'ca-app-pub-3940256099942544/6300978111';
@@ -24,7 +24,7 @@ class AppAds {
               : _testNativeAndroid)
           : _prodNative;
 
-  // Testing ke liye 1 rakho - production mein 3 karo
+  // Interstitial frequency: show after every N actions
   static const int interstitialEveryN = 3;
   // Inline native ad slot frequency inside long lists.
   static const int nativeAdEveryN = 6;

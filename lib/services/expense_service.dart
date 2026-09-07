@@ -238,19 +238,21 @@ class ExpenseService {
 
   Future<void> _persistTimeline(
       String contactKey, List<Map<String, dynamic>> items,
-      {String? secondaryKey}) async {
+      {String? secondaryKey, String? tertiaryKey}) async {
     try {
       if (contactKey.trim().isEmpty) return;
       final prefs = await _ensurePrefs();
-      final key = '$_timelineStoragePrefix${contactKey.trim()}';
       final safeRows = items.take(100).toList();
       final encoded = jsonEncode(safeRows);
-      await prefs.setString(key, encoded);
-      if (secondaryKey != null &&
-          secondaryKey.trim().isNotEmpty &&
-          secondaryKey.trim() != contactKey.trim()) {
-        await prefs.setString(
-            '$_timelineStoragePrefix${secondaryKey.trim()}', encoded);
+      final keys = <String>{
+        contactKey.trim(),
+        if (secondaryKey != null && secondaryKey.trim().isNotEmpty)
+          secondaryKey.trim(),
+        if (tertiaryKey != null && tertiaryKey.trim().isNotEmpty)
+          tertiaryKey.trim(),
+      };
+      for (final k in keys) {
+        await prefs.setString('$_timelineStoragePrefix$k', encoded);
       }
     } catch (e) {
       developer.log('Persist timeline cache error: $e');
@@ -328,13 +330,16 @@ class ExpenseService {
     required int totalAmount,
     required List<String> participants,
     String category = 'other',
+    String? payerPhone,
   }) async {
     final resolvedParticipants = participants
         .map((p) => PhoneUtils.normalizeRaw(p))
         .where((p) => p.isNotEmpty)
         .toList();
+    final normalizedPayer =
+        payerPhone != null ? PhoneUtils.normalizeRaw(payerPhone) : null;
     developer.log(
-        'ExpenseService: creating expense "$description" amount=$totalAmount participants=${resolvedParticipants.length}');
+        'ExpenseService: creating expense "$description" amount=$totalAmount participants=${resolvedParticipants.length} payer=$normalizedPayer');
     final response = await _api.post(
       ApiConfig.expenses,
       data: {
@@ -342,6 +347,8 @@ class ExpenseService {
         'totalAmount': totalAmount,
         'participants': resolvedParticipants,
         'category': category,
+        if (normalizedPayer != null && normalizedPayer.isNotEmpty)
+          'payerPhone': normalizedPayer,
       },
     );
     final model =
@@ -442,6 +449,7 @@ class ExpenseService {
     String? toUserId,
     String? toPhone,
     required int amount,
+    bool isReceived = false,
   }) async {
     assert(toUserId != null || toPhone != null,
         'Either toUserId or toPhone required');
@@ -451,6 +459,7 @@ class ExpenseService {
         if (toUserId != null) 'toUser': toUserId,
         if (toPhone != null) 'toPhone': toPhone,
         'amount': amount,
+        if (isReceived) 'isReceived': true,
       },
     );
     final data = response.data['data'];
@@ -555,6 +564,15 @@ class ExpenseService {
   Future<Map<String, dynamic>> getBalances({bool forceRefresh = false}) async {
     if (!forceRefresh && _balancesCache != null && _isFresh(_balancesCacheAt)) {
       return _balancesCache!;
+    }
+
+    if (!forceRefresh) {
+      final local = await _readPersistedBalances();
+      if (local.isNotEmpty) {
+        _balancesCache = local;
+        _balancesCacheAt = DateTime.now();
+        return local;
+      }
     }
 
     if (forceRefresh) {
@@ -736,6 +754,11 @@ class ExpenseService {
         localItems = await _readPersistedTimeline(
             _canonicalPhone(withUserPhone.trim()));
       }
+      if (localItems.isEmpty &&
+          withUserId != null &&
+          withUserId.trim().isNotEmpty) {
+        localItems = await _readPersistedTimeline(withUserId.trim());
+      }
       if (localItems.isNotEmpty) {
         final localPage = TimelinePage(
           items: localItems,
@@ -872,7 +895,11 @@ class ExpenseService {
             (withUserPhone != null && withUserPhone.trim().isNotEmpty)
                 ? _canonicalPhone(withUserPhone.trim())
                 : null;
-        unawaited(_persistTimeline(contactKey, parsed, secondaryKey: phoneKey));
+        final idKey = (withUserId != null && withUserId.trim().isNotEmpty)
+            ? withUserId.trim()
+            : null;
+        unawaited(_persistTimeline(contactKey, parsed,
+            secondaryKey: phoneKey, tertiaryKey: idKey));
       }
       return page;
     } catch (e) {

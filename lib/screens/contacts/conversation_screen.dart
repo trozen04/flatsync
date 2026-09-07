@@ -28,6 +28,7 @@ import '../../services/interstitial_ad_service.dart';
 import '../../widgets/app_dialog.dart';
 import '../../constants/app_info.dart';
 import 'package:share_plus/share_plus.dart';
+import 'contact_details_screen.dart';
 
 class ConversationScreen extends StatefulWidget {
   final ContactModel contact;
@@ -62,50 +63,74 @@ class _ConversationScreenState extends State<ConversationScreen> {
     _updatesSub = context.read<ExpenseService>().updates.listen((_) {
       if (mounted) _syncFromServer();
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLocalFirst());
+    _loadLocalFirst();
   }
 
   Future<void> _loadLocalFirst() async {
     try {
       final expenseService = context.read<ExpenseService>();
       final contactId = widget.contact.contactId;
-      late final List<dynamic> localData;
 
-      if (contactId != null && contactId.isNotEmpty) {
-        final page = await expenseService.getTimeline(
-          withUserId: contactId,
-          withUserPhone: widget.contact.phoneNumber,
-          forceRefresh: false,
-        );
-        localData = page.items;
-        _nextCursor = page.nextCursor;
-        _hasMore = page.hasMore;
+      final timelineFuture = (contactId != null && contactId.isNotEmpty)
+          ? expenseService.getTimeline(
+              withUserId: contactId,
+              withUserPhone: widget.contact.phoneNumber,
+              forceRefresh: false,
+            )
+          : expenseService.getConversationByPhone(
+              widget.contact.phoneNumber ?? '',
+              forceRefresh: false,
+            );
+
+      final balancesFuture = expenseService.getBalances(forceRefresh: false);
+
+      final results = await Future.wait([timelineFuture, balancesFuture]);
+      final timelineResult = results[0];
+      final balancesResult = results[1] as Map<String, dynamic>;
+
+      final List<dynamic> localData;
+      if (timelineResult is TimelinePage) {
+        localData = timelineResult.items;
+        _nextCursor = timelineResult.nextCursor;
+        _hasMore = timelineResult.hasMore;
+      } else if (timelineResult is List<dynamic>) {
+        localData = timelineResult;
       } else {
-        localData = await expenseService.getConversationByPhone(
-          widget.contact.phoneNumber ?? '',
-          forceRefresh: false,
-        );
+        localData = const [];
       }
 
-      final balances = await expenseService.getBalances(forceRefresh: false);
-      final balance = _resolveContactBalance(balances);
+      final sanitizedLocalData = localData.map((e) {
+        if (e is Map && e['status'] == 'syncing') {
+          final created = DateTime.tryParse(e['createdAt']?.toString() ?? '');
+          if (created != null &&
+              DateTime.now().toUtc().difference(created).inSeconds > 30) {
+            final copy = Map<String, dynamic>.from(e);
+            copy['status'] = 'failed';
+            return copy;
+          }
+        }
+        return e;
+      }).toList();
+
+      final balance = _resolveContactBalance(balancesResult);
 
       if (mounted) {
         setState(() {
-          _transactions = localData;
+          _transactions = sanitizedLocalData;
           _balance = balance;
           _hasMore = _hasMore || localData.length >= 20;
-          if (localData.isNotEmpty) {
-            _initialLoading = false;
-            _syncing = false;
-          } else {
-            _syncing = true;
-          }
+          _initialLoading = false;
+          _syncing = false;
         });
       }
     } catch (e) {
       developer.log('Load local conversation error: $e');
-      if (mounted) setState(() => _syncing = false);
+      if (mounted) {
+        setState(() {
+          _initialLoading = false;
+          _syncing = false;
+        });
+      }
     }
 
     // Trigger background silent synchronization
@@ -113,18 +138,90 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   List<dynamic> _mergeServerDataWithOptimistic(List<dynamic> serverItems) {
-    final serverIds = serverItems
-        .map(_itemIdentifier)
-        .where((id) => id.isNotEmpty)
-        .toSet();
+    final serverIds = <String>{};
+    for (final item in serverItems) {
+      if (item is Map) {
+        final id = (item['id'] ??
+                item['_id'] ??
+                item['expenseId'] ??
+                item['transactionId'])
+            ?.toString();
+        if (id != null && id.isNotEmpty) serverIds.add(id);
+        final clientUuid = item['clientUuid']?.toString();
+        if (clientUuid != null && clientUuid.isNotEmpty) {
+          serverIds.add(clientUuid);
+        }
+      }
+    }
 
-    final pendingItems = _transactions.where((e) {
-      if (e is! Map<String, dynamic>) return false;
+    final pendingItems = <dynamic>[];
+    for (final e in _transactions) {
+      if (e is! Map) continue;
+      final id = (e['id'] ??
+              e['_id'] ??
+              e['expenseId'] ??
+              e['transactionId'])
+          ?.toString() ??
+          '';
+      final clientUuid = e['clientUuid']?.toString() ?? '';
+
+      // Direct ID match against server list
+      if (id.isNotEmpty && serverIds.contains(id)) continue;
+      if (clientUuid.isNotEmpty && serverIds.contains(clientUuid)) continue;
+
       final status = e['status']?.toString();
-      if (status != 'syncing' && status != 'failed') return false;
-      final clientUuid = _itemIdentifier(e);
-      return !serverIds.contains(clientUuid);
-    }).toList();
+      final isTemp = clientUuid.startsWith('temp_') || id.startsWith('temp_');
+
+      if (!isTemp && status != 'syncing' && status != 'failed') {
+        continue;
+      }
+
+      // Check if server already includes this entry (fuzzy content/time matching)
+      final eType = e['type']?.toString();
+      final eDir = e['direction']?.toString();
+      final eAmt = (e['totalAmount'] ?? e['amount']) as num?;
+      final eCreated = DateTime.tryParse(e['createdAt']?.toString() ?? '');
+
+      final alreadyOnServer = serverItems.any((s) {
+        if (s is! Map) return false;
+        final sType = s['type']?.toString();
+        final sDir = s['direction']?.toString();
+        final sAmt = (s['totalAmount'] ?? s['amount']) as num?;
+        if (sType != eType || sDir != eDir || sAmt != eAmt) return false;
+
+        if (eCreated != null) {
+          final sCreated = DateTime.tryParse(s['createdAt']?.toString() ?? '');
+          if (sCreated != null) {
+            final diff = sCreated.difference(eCreated).abs();
+            if (diff.inMinutes <= 5) return true;
+          }
+        }
+        return false;
+      });
+
+      if (alreadyOnServer) {
+        // Entry already acknowledged and present in server data
+        continue;
+      }
+
+      if (status == 'syncing') {
+        if (eCreated != null &&
+            DateTime.now().toUtc().difference(eCreated).inSeconds > 30) {
+          final copy = Map<String, dynamic>.from(e);
+          copy['status'] = 'failed';
+          pendingItems.add(copy);
+        } else {
+          pendingItems.add(e);
+        }
+      } else if (status == 'failed') {
+        pendingItems.add(e);
+      } else if (isTemp) {
+        if (eCreated != null &&
+            DateTime.now().toUtc().difference(eCreated).inSeconds < 30) {
+          pendingItems.add(e);
+        }
+      }
+    }
 
     return [...pendingItems, ...serverItems];
   }
@@ -655,58 +752,287 @@ class _ConversationScreenState extends State<ConversationScreen> {
     return {'amountPaise': amountPaise, 'description': descCtrl.text.trim()};
   }
 
-  Future<Map<String, dynamic>?> _showEntryDialog(
-      {required bool isTransaction}) async {
+  Future<Map<String, dynamic>?> _showEntryDialog({
+    required bool isTransaction,
+  }) async {
     final currencyCode =
         context.read<AppPreferencesService>().preferredCurrencyCode;
     final currency = AppCurrencies.byCode(currencyCode);
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
+    String direction = isTransaction ? 'sent' : 'you_paid';
+    final contactName = widget.contact.name ?? 'Contact';
 
-    final confirmed = await showDialog<bool>(
+    return showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => AppFormDialog(
-        title: isTransaction ? 'Add Transaction' : 'Add Expense',
-        icon: isTransaction
-            ? Icons.payments_outlined
-            : Icons.receipt_long_outlined,
-        accentColor: isTransaction ? AppColors.success : AppColors.primary,
-        fields: [
-          AppFormField(
-            controller: amountCtrl,
-            label: 'Amount (${currency.code})',
-            hint: 'e.g. 300',
-            prefix: currency.symbol,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            autofocus: true,
-          ),
-          if (!isTransaction)
-            AppFormField(
-              controller: descCtrl,
-              label: 'Description (Optional)',
-              hint: 'Dinner / Grocery / Cab',
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final isSentOrYouPaid = isTransaction
+              ? direction == 'sent'
+              : direction == 'you_paid';
+          final primaryAccent = isTransaction
+              ? (direction == 'sent' ? AppColors.error : AppColors.success)
+              : AppColors.primary;
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Theme.of(context).dividerColor.withValues(alpha: 0.15),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: primaryAccent.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isTransaction
+                              ? Icons.payments_outlined
+                              : Icons.receipt_long_outlined,
+                          color: primaryAccent,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        isTransaction ? 'Record Payment' : 'Add Expense',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 2-Pill Segmented Toggle
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setDialogState(() {
+                              direction = isTransaction ? 'sent' : 'you_paid';
+                            }),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSentOrYouPaid ? primaryAccent : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: isSentOrYouPaid
+                                    ? [
+                                        BoxShadow(
+                                          color: primaryAccent.withValues(alpha: 0.25),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Text(
+                                isTransaction ? '🔴 I Sent' : '🔴 You Paid',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isSentOrYouPaid
+                                      ? Colors.white
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setDialogState(() {
+                              direction = isTransaction ? 'received' : 'they_paid';
+                            }),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: !isSentOrYouPaid ? primaryAccent : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: !isSentOrYouPaid
+                                    ? [
+                                        BoxShadow(
+                                          color: primaryAccent.withValues(alpha: 0.25),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Text(
+                                isTransaction ? '🟢 I Received' : '🔵 $contactName Paid',
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: !isSentOrYouPaid
+                                      ? Colors.white
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Amount Field
+                  TextField(
+                    controller: amountCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    autofocus: true,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      labelText: 'Amount (${currency.code})',
+                      hintText: 'e.g. 500',
+                      prefixText: '${currency.symbol} ',
+                      prefixStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      filled: true,
+                      fillColor: AppColors.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: primaryAccent, width: 1.5),
+                      ),
+                    ),
+                  ),
+
+                  if (!isTransaction) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descCtrl,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Description (Optional)',
+                        hintText: 'Dinner / Grocery / Cab',
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: primaryAccent, width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+
+                  // Action Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: primaryAccent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          onPressed: () {
+                            final amountPaise = parseAmountToMinorUnits(
+                              amountCtrl.text,
+                              currencyCode: currencyCode,
+                            );
+                            if (amountPaise == null || amountPaise <= 0) {
+                              return;
+                            }
+                            Navigator.pop(ctx, {
+                              'amountPaise': amountPaise,
+                              'description': descCtrl.text.trim(),
+                              'direction': direction,
+                            });
+                          },
+                          child: const Text(
+                            'Save',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-        ],
-        confirmLabel: 'Save',
-        onConfirm: () {
-          final v = parseAmountToMinorUnits(amountCtrl.text,
-              currencyCode: currencyCode);
-          if (v == null) return 'Enter a valid amount';
-          return null;
+          );
         },
       ),
     );
-    if (confirmed != true) return null;
-    final amountPaise =
-        parseAmountToMinorUnits(amountCtrl.text, currencyCode: currencyCode);
-    if (amountPaise == null) return null;
-    return {'amountPaise': amountPaise, 'description': descCtrl.text.trim()};
   }
 
   Future<void> _addExpenseFromChat() async {
     final phone = widget.contact.phoneNumber;
     final overlay = Overlay.of(context);
     final expenseService = context.read<ExpenseService>();
+    final contactService = context.read<ContactService>();
+    final isar = context.read<IsarService>();
     if (phone == null || phone.isEmpty) {
       CustomSnackBar.showOnOverlay(
         overlay,
@@ -720,12 +1046,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (input == null) return;
 
     final amount = (input['amountPaise'] as num).toInt();
+    final direction = (input['direction'] as String?) ?? 'you_paid';
+    final isYouPaid = direction == 'you_paid';
     final rawDesc = (input['description'] as String?)?.trim();
     final description = (rawDesc == null || rawDesc.isEmpty) ? 'Expense' : rawDesc;
     final clientUuid = 'temp_${DateTime.now().microsecondsSinceEpoch}';
 
     final yourShare = amount ~/ 2;
-    final theyOwe = amount - yourShare;
+    final signedAmount = isYouPaid ? (amount - yourShare) : -yourShare;
 
     final optimisticItem = <String, dynamic>{
       'id': clientUuid,
@@ -734,12 +1062,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
       'type': 'expense',
       'amount': yourShare,
       'totalAmount': amount,
-      'signedAmount': theyOwe,
-      'direction': 'you_paid',
+      'signedAmount': signedAmount,
+      'direction': direction,
       'description': description,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'status': 'syncing',
-      'createdBy': _currentUserId,
+      'createdBy': isYouPaid ? _currentUserId : (widget.contact.contactId ?? phone),
+      'addedBy': 'you',
+      'addedById': _currentUserId,
       'participantPhones': [phone],
       'participants': 1,
     };
@@ -750,9 +1080,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (mounted) {
       setState(() {
         _transactions = [optimisticItem, ..._transactions];
-        _balance += theyOwe;
+        _balance += signedAmount;
       });
     }
+
+    unawaited(isar
+        .touchContactActivity(phone, contactId: widget.contact.contactId)
+        .then((_) => contactService.notifyUpdate()));
 
     unawaited(
         expenseService.saveOptimisticTimelineItem(contactKey, optimisticItem));
@@ -764,6 +1098,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           description: description,
           totalAmount: amount,
           participants: [phone],
+          payerPhone: isYouPaid ? null : phone,
         );
         if (mounted) {
           setState(() {
@@ -807,6 +1142,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _addTransactionFromChat() async {
     final overlay = Overlay.of(context);
     final expenseService = context.read<ExpenseService>();
+    final contactService = context.read<ContactService>();
+    final isar = context.read<IsarService>();
     final resolvedId = await _ensureResolvedContactId();
     final toPhone = widget.contact.phoneNumber;
 
@@ -829,6 +1166,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (input == null) return;
 
     final amount = (input['amountPaise'] as num).toInt();
+    final direction = (input['direction'] as String?) ?? 'sent';
+    final isReceived = direction == 'received';
+    final signedAmount = isReceived ? -amount : amount;
     final clientUuid = 'temp_${DateTime.now().microsecondsSinceEpoch}';
 
     final optimisticItem = <String, dynamic>{
@@ -837,11 +1177,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
       'transactionId': clientUuid,
       'type': 'transaction',
       'amount': amount,
-      'signedAmount': amount,
-      'direction': 'sent',
-      'description': 'Sent payment',
+      'signedAmount': signedAmount,
+      'direction': direction,
+      'description': isReceived ? 'Received payment' : 'Sent payment',
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'status': 'syncing',
+      'addedBy': 'you',
+      'addedById': _currentUserId,
       'counterparty': {
         if (toUserId != null) '_id': toUserId,
         if (effectivePhone != null) 'phoneNumber': effectivePhone,
@@ -854,9 +1196,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (mounted) {
       setState(() {
         _transactions = [optimisticItem, ..._transactions];
-        _balance += amount;
+        _balance += signedAmount;
       });
     }
+
+    unawaited(isar
+        .touchContactActivity(effectivePhone, contactId: toUserId)
+        .then((_) => contactService.notifyUpdate()));
 
     unawaited(
         expenseService.saveOptimisticTimelineItem(contactKey, optimisticItem));
@@ -865,11 +1211,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
     unawaited(() async {
       try {
         developer.log(
-            '[ConversationScreen] createTransaction toUserId=$toUserId toPhone=$effectivePhone amount=$amount');
+            '[ConversationScreen] createTransaction toUserId=$toUserId toPhone=$effectivePhone amount=$amount isReceived=$isReceived');
         await expenseService.createTransaction(
           toUserId: toUserId,
           toPhone: effectivePhone,
           amount: amount,
+          isReceived: isReceived,
         );
         if (mounted) {
           setState(() {
@@ -967,10 +1314,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
         final toUserId = isUuid ? resolvedId : null;
         final effectivePhone = !isUuid ? (toPhone ?? resolvedId) : null;
 
+        final isReceived = item['direction'] == 'received';
         await expenseService.createTransaction(
           toUserId: toUserId,
           toPhone: effectivePhone,
           amount: amount,
+          isReceived: isReceived,
         );
         if (mounted) {
           setState(() {
@@ -1028,13 +1377,40 @@ class _ConversationScreenState extends State<ConversationScreen> {
       resizeToAvoidBottomInset: false,
       appBar: GradientAppBar(
         title: widget.contact.name ?? 'Conversation',
+        onTitleTap: () async {
+          final nav = Navigator.of(context);
+          final deleted = await nav.push<bool>(
+            MaterialPageRoute(
+              builder: (_) => ContactDetailsScreen(
+                contact: widget.contact,
+                balance: _balance,
+                transactionCount: _transactions.length,
+              ),
+            ),
+          );
+          if (deleted == true && mounted) {
+            nav.pop();
+          }
+        },
         actions: [
           if (_transactions.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.share_outlined),
-              tooltip: 'Share all',
-              onPressed: () => _shareAll(
-                context.read<AppPreferencesService>().preferredCurrencyCode,
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                  padding: const EdgeInsets.all(8),
+                  minimumSize: const Size(38, 38),
+                ),
+                icon: const Icon(
+                  Icons.share_outlined,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
+                tooltip: 'Share all',
+                onPressed: () => _shareAll(
+                  context.read<AppPreferencesService>().preferredCurrencyCode,
+                ),
               ),
             ),
         ],
@@ -1067,9 +1443,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
               ],
             ),
           ),
-          LoadingIndicator(isLoading: _syncing),
+          LoadingIndicator(isLoading: _syncing && _transactions.isNotEmpty),
           Expanded(
-            child: ((_initialLoading || _syncing) && _transactions.isEmpty)
+            child: (_initialLoading && _transactions.isEmpty)
                 ? _buildSkeletonLoading(context)
                 : _transactions.isEmpty
                     ? RefreshIndicator(
@@ -1137,6 +1513,35 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                       item['id']) as String?;
                                   final createdBy =
                                       item['createdBy'] as String?;
+                                  final addedById = (item['addedById'] ??
+                                          item['createdById'] ??
+                                          (item['createdBy'] is String
+                                              ? item['createdBy']
+                                              : null)) as String?;
+                                  final addedByName = (item['addedBy'] ??
+                                      item['createdByName']) as String?;
+                                  final isAddedByMe = (addedById != null &&
+                                          _currentUserId != null &&
+                                          addedById == _currentUserId) ||
+                                      addedByName == 'you';
+                                  final isCreatorOrAdder = (createdBy != null &&
+                                          _currentUserId != null &&
+                                          createdBy == _currentUserId) ||
+                                      isAddedByMe;
+
+                                  final String? addedByLabel = isAddedByMe
+                                      ? 'Added by you'
+                                      : (addedByName != null &&
+                                              addedByName.trim().isNotEmpty &&
+                                              addedByName.toLowerCase() !=
+                                                  'null'
+                                          ? 'Added by $addedByName'
+                                          : (widget.contact.contactId != null &&
+                                                  addedById ==
+                                                      widget.contact.contactId
+                                              ? 'Added by ${widget.contact.name ?? widget.contact.phoneNumber ?? "friend"}'
+                                              : null));
+
                                   final isDeleted = item['isDeleted'] == true;
                                   final deletedBy =
                                       item['deletedBy'] as String?;
@@ -1144,13 +1549,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                       item['updatedBy'] as String?;
                                   final canEditExpense = type == 'expense' &&
                                       entryId != null &&
-                                      createdBy == _currentUserId &&
+                                      isCreatorOrAdder &&
                                       !isDeleted;
                                   final canDeleteExpense = canEditExpense;
                                   final canDeleteTransaction =
                                       type == 'transaction' &&
                                           entryId != null &&
-                                          direction == 'sent';
+                                          !isDeleted &&
+                                          (direction == 'sent' ||
+                                              isCreatorOrAdder);
                                   final canManageEntry = canEditExpense ||
                                       canDeleteExpense ||
                                       canDeleteTransaction;
@@ -1396,6 +1803,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                       date),
                                               icon: Icons.calendar_today,
                                             ));
+                                            if (addedByLabel != null) {
+                                              items.add(DetailItem(
+                                                label: 'Recorded by',
+                                                value: addedByLabel,
+                                                icon: Icons.person_outline_rounded,
+                                                valueColor: AppColors.textSecondary,
+                                              ));
+                                            }
                                             if (metaLabel != null) {
                                               items.add(DetailItem(
                                                 label: isDeleted
@@ -1868,6 +2283,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                                                     '${participants + 1} people',
                                                                 color: AppColors
                                                                     .textSecondary,
+                                                              ),
+                                                            if (addedByLabel !=
+                                                                null)
+                                                              _buildBubblePill(
+                                                                icon: Icons
+                                                                    .person_outline_rounded,
+                                                                label:
+                                                                    addedByLabel,
+                                                                color: AppColors
+                                                                    .textSecondary,
+                                                                shrink: true,
                                                               ),
                                                             if (metaLabel !=
                                                                 null)

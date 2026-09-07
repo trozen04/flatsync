@@ -97,6 +97,30 @@ class ContactService {
     return merged;
   }
 
+  Future<void> touchContactActivity(IsarService isar, String? phoneNumber,
+      {String? contactId}) async {
+    await isar.touchContactActivity(phoneNumber, contactId: contactId);
+    notifyUpdate();
+  }
+
+  Future<void> deleteContact(IsarService isar, ContactModel contact) async {
+    await isar.deleteContact(
+      contact.id,
+      contactId: contact.contactId,
+      phoneNumber: contact.phoneNumber,
+    );
+    notifyUpdate();
+
+    if (contact.contactId != null && contact.contactId!.isNotEmpty) {
+      try {
+        await _api.delete(ApiConfig.blockContact(contact.contactId!));
+      } catch (e) {
+        developer.log('Failed to block/hide contact on backend: $e',
+            name: 'ContactService');
+      }
+    }
+  }
+
   Future<void> upsertContactsByCanonical(
       IsarService isar, List<ContactModel> incoming) async {
     if (incoming.isEmpty) return;

@@ -11,6 +11,7 @@ class AppPreferencesService extends ChangeNotifier {
   static const String _notificationPromptSeenKey =
       'notification_prompt_seen_v1';
   static const String _notificationsEnabledKey = 'notifications_enabled_v1';
+  static const String _appInquirySeenKey = 'app_inquiry_seen_v1';
 
   SharedPreferences? _prefs;
   String _preferredCurrencyCode = AppCurrencies.defaultCode;
@@ -18,6 +19,7 @@ class AppPreferencesService extends ChangeNotifier {
   bool _currencyManuallySelected = false;
   bool _notificationPromptSeen = false;
   bool _notificationsEnabled = false;
+  bool _appInquirySeen = false;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -30,6 +32,7 @@ class AppPreferencesService extends ChangeNotifier {
     _notificationPromptSeen =
         prefs.getBool(_notificationPromptSeenKey) ?? false;
     _notificationsEnabled = prefs.getBool(_notificationsEnabledKey) ?? false;
+    _appInquirySeen = prefs.getBool(_appInquirySeenKey) ?? false;
   }
 
   String get preferredCurrencyCode => _preferredCurrencyCode;
@@ -39,6 +42,7 @@ class AppPreferencesService extends ChangeNotifier {
   bool get currencyManuallySelected => _currencyManuallySelected;
   bool get notificationPromptSeen => _notificationPromptSeen;
   bool get notificationsEnabled => _notificationsEnabled;
+  bool get appInquirySeen => _appInquirySeen;
 
   Future<void> setPreferredCurrency(
     String code, {
@@ -84,6 +88,15 @@ class AppPreferencesService extends ChangeNotifier {
     _prefs = prefs;
     await prefs.setBool(_notificationsEnabledKey, enabled);
     _notificationsEnabled = enabled;
+    notifyListeners();
+  }
+
+  Future<void> setAppInquirySeen(bool seen) async {
+    if (seen == _appInquirySeen) return;
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.setBool(_appInquirySeenKey, seen);
+    _appInquirySeen = seen;
     notifyListeners();
   }
 
